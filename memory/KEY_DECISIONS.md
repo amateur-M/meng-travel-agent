@@ -1,0 +1,99 @@
+## Key Design Decisions
+
+### 1. Frontend Build Tool: Vite (not CRA / Next.js)
+
+**Decision**: Use Vite 5+
+
+**Rationale**:
+- Vite is the community default for new React projects; Create React App is deprecated
+- Cold-start dev server in under 1 second, instant HMR
+- Native TypeScript + ESM support, no extra config
+- Built-in dev proxy (`vite.config.ts` proxy to backend), no CORS hassles
+- Next.js SSR is unnecessary for this SPA project
+
+### 2. State Management: Zustand (not Redux / Context)
+
+**Decision**: Use Zustand 4+
+
+**Rationale**:
+- Minimal API (a single `create` function), near-zero learning curve
+- No Provider wrapping required, cleaner component tree
+- Selector-based subscriptions prevent unnecessary re-renders
+- First-class TypeScript inference
+- Redux boilerplate is overkill for this project size; Context performs poorly with frequent updates
+
+### 3. Backend Directory Structure: Flat (no `app/` sub-package)
+
+**Decision**: Place `main.py` directly under `backend/`, with flat modules (`agents/`, `config/`, `schemas/`, `tools/`)
+
+**Rationale**:
+- Few modules at project start, an `app/` wrapper adds path depth with no benefit
+- `python main.py` from `backend/` root reduces cognitive overhead
+- Can introduce an `app/` wrapper later if module count exceeds 20+
+
+### 4. Python Package Management: pyproject.toml + requirements.txt
+
+**Decision**: Maintain both `pyproject.toml` (Poetry standard) and `requirements.txt` (pip compatible)
+
+**Rationale**:
+- `pyproject.toml` is the modern Python ecosystem standard with better lockfile management via Poetry
+- `requirements.txt` provides a one-command pip install fallback, lowering the entry barrier
+- Both can be derived from each other with minimal maintenance cost
+
+### 5. HTTP Client: axios (not fetch)
+
+**Decision**: Use axios for frontend API calls
+
+**Rationale**:
+- Automatic JSON parsing, no manual `.json()` calls
+- Request/response interceptors for unified loading, error, and auth handling
+- Simple timeout configuration
+- `fetch` error status handling is unintuitive (does not throw on 4xx/5xx)
+
+### 6. UI Animation: Framer Motion
+
+**Decision**: Use Framer Motion 11+
+
+**Rationale**:
+- De facto standard in React ecosystem, declarative and intuitive API
+- LayoutGroup and AnimatePresence support card enter/exit animations natively
+- Non-invasive with Tailwind CSS, layers cleanly on top
+
+### 7. Real-time Updates: SSE (not WebSocket)
+
+**Decision**: Push itinerary generation progress via Server-Sent Events
+
+**Rationale** (restated from ARCHITECTURE):
+- Progress notifications are unidirectional (server to client), SSE covers this fully
+- Browser-native `EventSource` API, zero extra dependencies
+- Automatic reconnection, lighter protocol
+- WebSocket reserved for potential future multi-user collaboration scenarios
+
+
+
+### 8. Graph Topology: Conditional Edge for Budget Retry
+
+**Decision**: budget_check → plan_itinerary uses a conditional edge (not a fixed loop).
+
+**Rationale**:
+- Budget may be exceeded multiple times after adjustment; a conditional edge with a router function (`_route_after_budget`) checks `over_budget` AND `retry_count < 2` before looping back
+- Capping at 2 retries prevents infinite loops from irreconcilable budgets
+- When budget is acceptable (or retries exhausted), the edge routes to `adapt_weather`
+
+### 9. Node Fan-out: parse_input → 3 parallel fetchers
+
+**Decision**: `parse_input` fans out to `fetch_weather`, `search_poi`, and `search_food` via three parallel edges.
+
+**Rationale**:
+- All three fetchers depend only on `parsed_params` (already set by `parse_input`), not on each other
+- Running them as parallel edges signals the intent for future async execution, even though LangGraph executes them sequentially in M1
+- The `current_phase` field uses an `Annotated[str, _latest_str]` reducer so concurrent writes from all three don't collide
+
+### 10. Mock-first Strategy in M1
+
+**Decision**: All external-dependent nodes (fetch_weather, search_poi, search_food, plan_itinerary) include a mock/fallback path so the graph runs without API keys.
+
+**Rationale**:
+- Enables immediate testing of the full graph topology without configuring external services
+- Each node checks for API key availability and falls back gracefully
+- M2 will replace mocks with real API calls without changing the graph structure
