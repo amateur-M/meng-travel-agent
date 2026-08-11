@@ -4,7 +4,7 @@
 |-----------|--------|------------|----------|-------|
 | M0 | Done | 2026-08-10 | 2026-08-10 | Project scaffold complete |
 | M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
-| M2 | Pending | — | — | External API integration |
+| M2 | In Progress | 2026-08-11 | — | External API integration |
 | M3 | Pending | — | — | Frontend basic UI |
 | M4 | Pending | — | — | Budget + weather |
 | M5 | Pending | — | — | Rhythm + couple messages |
@@ -56,9 +56,31 @@
 - [x] Edge cases: single-day, budget overflow retry, rain-to-indoor swap, heat reschedule
 - [x] **Result: 96/96 passed**
 
+
+## M2 In-Progress Tasks
+
+- [x] 4 LangChain Tools implemented in tools/:
+  - [x] weather_tool.py — OpenWeatherMap API + mock fallback, @tool decorator
+  - [x] poi_search_tool.py — Rich mock POI database (5 cities, ~50 attractions), @tool decorator
+  - [x] food_search_tool.py — Rich mock restaurant database (5 cities, ~25 restaurants), @tool decorator
+  - [x] maps_tool.py — Haversine distance + nearest-neighbor routing, @tool decorator
+  - [x] tools/__init__.py exports all four tools
+- [x] 5 Prompt templates in prompts/ (as .md files):
+  - [x] parse_input_prompt.md — Extract structured travel parameters
+  - [x] plan_itinerary_prompt.md — Core itinerary orchestration (romantic pacing)
+  - [x] couple_copy_prompt.md — Couple message generation per activity
+  - [x] weather_adapt_prompt.md — Rain/heat weather adaptation rules
+  - [x] budget_downgrade_prompt.md — Budget overflow downgrade strategies
+  - [x] prompts/__init__.py loads .md templates + retains M1 inline templates for backward compat
+- [ ] Wire tools into existing nodes (fetch_weather, search_poi, search_food, etc.)
+- [ ] Integrate OpenWeatherMap real API call
+- [ ] Write tool unit tests (test_tools.py)
+- [ ] Write prompt template tests (test_prompts.py update)
+- [ ] Integrate OpenAI GPT-4o for real LLM-powered itinerary generation
+
 ## Verification
 
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
-
+- M2 tools and prompts created, pending wiring and testing

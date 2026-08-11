@@ -23,16 +23,41 @@ meng-travel-agent/
 │   │   ├── __init__.py
 │   │   ├── state.py                 # AgentState TypedDict 定义
 │   │   ├── graph.py                 # LangGraph 图构建 + 编译
-│   │   └── nodes/                   # 各 Node 实现（M1 填充）
-│   │       └── __init__.py
-│   ├── tools/                       # LangChain Tools
-│   │   └── __init__.py              # 天气、地图、搜索工具（M2 填充）
+│   │   └── nodes/                   # 各 Node 实现（M1 完成）
+│   │       ├── __init__.py
+│   │       ├── parse_input.py
+│   │       ├── fetch_weather.py
+│   │       ├── search_poi.py
+│   │       ├── search_food.py
+│   │       ├── plan_itinerary.py
+│   │       ├── budget_check.py
+│   │       ├── adapt_weather.py
+│   │       ├── add_couple_touch.py
+│   │       └── output_format.py
+│   ├── tools/                       # LangChain Tools（M2 新增）
+│   │   ├── __init__.py              # 导出所有 Tool
+│   │   ├── weather_tool.py          # 天气查询（OpenWeatherMap + mock fallback）
+│   │   ├── poi_search_tool.py       # 景点搜索（5 城市 mock POI 数据库）
+│   │   ├── food_search_tool.py      # 美食搜索（5 城市 mock 餐厅数据库）
+│   │   └── maps_tool.py            # 路线规划（Haversine + nearest-neighbor）
 │   ├── prompts/                     # LLM Prompt 模板
-│   │   └── __init__.py
+│   │   ├── __init__.py              # 加载 .md 模板 + M1 内联模板
+│   │   ├── parse_input_prompt.md    # 提取结构化旅行参数
+│   │   ├── plan_itinerary_prompt.md # 核心行程编排（浪漫节奏）
+│   │   ├── couple_copy_prompt.md    # 情侣共情文案生成
+│   │   ├── weather_adapt_prompt.md  # 雨天/高温天气自适应
+│   │   └── budget_downgrade_prompt.md # 预算超标降级策略
 │   ├── schemas/                     # Pydantic 数据模型
-│   │   └── __init__.py              # API 请求/响应 schema（M1 填充）
+│   │   └── __init__.py              # API 请求/响应 schema
 │   └── tests/                       # 后端测试
-│       └── __init__.py
+│       ├── __init__.py
+│       ├── test_state.py
+│       ├── test_schemas.py
+│       ├── test_prompts.py
+│       ├── test_nodes_input.py
+│       ├── test_nodes_core.py
+│       ├── test_nodes_output.py
+│       └── test_graph.py
 │
 ├── frontend/                        # React 前端
 │   ├── index.html                   # HTML 入口
@@ -71,3 +96,17 @@ meng-travel-agent/
 | `backend/tools/` | `backend/app/services/` | tools 更贴切 LangChain 术语 |
 | `frontend/src/services/` | `frontend/src/api/` | services 范围更广，含业务逻辑封装 |
 | `frontend/src/stores/` | (未规划) | 新增 Zustand 状态管理层 |
+
+## M2 新增文件清单 (2026-08-11)
+
+| 文件 | 行数 | 说明 |
+|------|------|------|
+| `tools/weather_tool.py` | ~150 | OpenWeatherMap async + mock fallback, @tool |
+| `tools/poi_search_tool.py` | ~200 | 5 城市 × ~10 POI, 偏好过滤, couple_score |
+| `tools/food_search_tool.py` | ~130 | 5 城市 × ~5 餐厅, 菜系/预算筛选, atmosphere tags |
+| `tools/maps_tool.py` | ~100 | Haversine 距离, nearest-neighbor 路线, 多交通方式预估 |
+| `prompts/parse_input_prompt.md` | ~70 | 结构化参数提取, 字段约束, 示例 |
+| `prompts/plan_itinerary_prompt.md` | ~130 | 核心编排, 节奏控制, JSON Schema 约束 |
+| `prompts/couple_copy_prompt.md` | ~60 | 按活动类型的语气指引, 避免俗套句式, 8-25 字限制 |
+| `prompts/weather_adapt_prompt.md` | ~70 | 4 条调整规则（雨/高温/低温/大风）, swaps + time_shifts |
+| `prompts/budget_downgrade_prompt.md` | ~80 | 4 级降级策略, impact 分级, 不可降级项列表 |

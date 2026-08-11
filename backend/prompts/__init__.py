@@ -1,11 +1,40 @@
 ﻿"""Prompt templates for the travel planning agent.
 
-Templates use Python f-string / str.format() style placeholders.
-In production these may migrate to Jinja2 files, but f-strings keep
-the M1 footprint small while staying readable.
+Templates are loaded from .md files for readability and version control.
+The module also retains inline Python string templates for backward
+compatibility with existing nodes.
 """
 
-# ── System Prompt ────────────────────────────────────────────────
+import os
+
+_PROMPTS_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_md(filename: str) -> str:
+    """Load a markdown prompt template file, stripping metadata."""
+    path = os.path.join(_PROMPTS_DIR, filename)
+    if not os.path.exists(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    # Strip YAML frontmatter if present
+    if content.startswith("---"):
+        end = content.find("---", 3)
+        if end != -1:
+            content = content[end + 3:].strip()
+    return content.strip()
+
+
+# ── Markdown Prompt Templates (loaded from files) ────────────────
+
+PARSE_INPUT_PROMPT = _load_md("parse_input_prompt.md")
+PLAN_ITINERARY_PROMPT = _load_md("plan_itinerary_prompt.md")
+COUPLE_COPY_PROMPT = _load_md("couple_copy_prompt.md")
+WEATHER_ADAPT_PROMPT = _load_md("weather_adapt_prompt.md")
+BUDGET_DOWNGRADE_PROMPT = _load_md("budget_downgrade_prompt.md")
+
+
+# ── Inline Prompt Templates (M1 compatibility) ───────────────────
 
 SYSTEM_PROMPT = """你是一个专业的中国情侣旅游规划师。你的任务是根据用户提供的目的地、
 日期、预算和偏好，生成一份浪漫且可执行的情侣行程。
@@ -39,8 +68,6 @@ SYSTEM_PROMPT = """你是一个专业的中国情侣旅游规划师。你的任�
 }}
 """
 
-# ── Itinerary Generation ─────────────────────────────────────────
-
 ITINERARY_PROMPT = """请为以下情侣旅行生成一份 {num_days} 天的详细行程：
 
 **目的地**：{destination}
@@ -63,8 +90,6 @@ ITINERARY_PROMPT = """请为以下情侣旅行生成一份 {num_days} 天的详�
 {extra_instructions}
 """
 
-# ── Couple Message Generation ────────────────────────────────────
-
 COUPLE_MESSAGE_PROMPT = """你是一个温柔细腻的文案写手，专为情侣旅行撰写寄语。
 
 请为以下活动生成一句简短的情侣寄语（20字以内）：
@@ -78,8 +103,6 @@ COUPLE_MESSAGE_PROMPT = """你是一个温柔细腻的文案写手，专为情�
 - 与目的地氛围和活动类型匹配
 - 可以用"和你一起……"的句式，但不要千篇一律
 """
-
-# ── Budget Check ─────────────────────────────────────────────────
 
 BUDGET_CHECK_PROMPT = """请检查以下行程的预算是否合理：
 
@@ -103,9 +126,7 @@ BUDGET_CHECK_PROMPT = """请检查以下行程的预算是否合理：
 }}
 """
 
-# ── Weather Adaptation ───────────────────────────────────────────
-
-WEATHER_ADAPT_PROMPT = """请根据天气情况调整行程：
+WEATHER_ADAPT = """请根据天气情况调整行程：
 
 **天气数据**：
 {weather_data}
@@ -131,3 +152,21 @@ WEATHER_ADAPT_PROMPT = """请根据天气情况调整行程：
   ]
 }}
 """
+
+
+# ── Public API ───────────────────────────────────────────────────
+
+__all__ = [
+    # Markdown templates (new, M2+)
+    "PARSE_INPUT_PROMPT",
+    "PLAN_ITINERARY_PROMPT",
+    "COUPLE_COPY_PROMPT",
+    "WEATHER_ADAPT_PROMPT",
+    "BUDGET_DOWNGRADE_PROMPT",
+    # Inline templates (M1 backward compat)
+    "SYSTEM_PROMPT",
+    "ITINERARY_PROMPT",
+    "COUPLE_MESSAGE_PROMPT",
+    "BUDGET_CHECK_PROMPT",
+    "WEATHER_ADAPT",
+]
