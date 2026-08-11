@@ -1,12 +1,12 @@
-## 项目：情侣旅游规划 Agent（CoupleTrip）
+﻿## 项目：情侣旅游规划 Agent（CoupleTrip）
 
 **一句话描述**：AI 驱动的旅游规划助手，根据日期、出发地、目的地、天气、景点、美食、预算与偏好，自动生成可执行的情侣行程。
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o
 
-**当前阶段**：M0 完成（项目骨架搭建完成），准备启动 M1。
+**当前阶段**：M1 完成（Agent 引擎 + 96 个测试全部通过），准备启动 M2。
 
-**下一步行动**：启动 M1 —— 实现 LangGraph Agent 引擎核心链路（8 个 Node + Prompt + 数据模型）。
+**下一步行动**：启动 M2 —— 对接外部 API（天气 + 地图 POI + OpenAI GPT-4o），替换 M1 中的 mock 数据。
 
 ---
 

@@ -1,9 +1,9 @@
-## Development Progress
+﻿## Development Progress
 
 | Milestone | Status | Start Date | End Date | Notes |
 |-----------|--------|------------|----------|-------|
 | M0 | Done | 2026-08-10 | 2026-08-10 | Project scaffold complete |
-| M1 | Done | 2026-08-10 | 2026-08-10 | Agent engine core |
+| M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
 | M2 | Pending | — | — | External API integration |
 | M3 | Pending | — | — | Frontend basic UI |
 | M4 | Pending | — | — | Budget + weather |
@@ -42,9 +42,23 @@
 - [x] POST /api/plan SSE streaming endpoint
 - [x] graph.invoke() dry-run verified: 2-day mock itinerary with budget + couple notes
 
+
+## M1 Test Suite
+
+- [x] test_schemas.py (13 tests) — Pydantic request/response model validation
+- [x] test_state.py (7 tests) — AgentState TypedDict + _latest_str reducer
+- [x] test_prompts.py (10 tests) — 5 prompt templates (existence + format)
+- [x] test_nodes_input.py (16 tests) — parse_input / fetch_weather / search_poi / search_food
+- [x] test_nodes_core.py (17 tests) — plan_itinerary / budget_check / adapt_weather
+- [x] test_nodes_output.py (11 tests) — add_couple_touch / output_format
+- [x] test_graph.py (17 tests) — full graph integration (3 destinations, budget loop, stream mode)
+- [x] All destinations tested: Dali, Lijiang, Sanya, unknown fallback
+- [x] Edge cases: single-day, budget overflow retry, rain-to-indoor swap, heat reschedule
+- [x] **Result: 96/96 passed**
+
 ## Verification
 
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
-- Backend scaffold ready for M1 Agent development
+- Backend M1 agent engine fully tested (96/96)
 
