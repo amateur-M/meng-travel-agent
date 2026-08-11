@@ -1,15 +1,26 @@
 ﻿"""add_couple_touch — Attach romantic couple messages to each activity.
 
-For M1, generates simple template-based messages without calling the LLM.
-M5 will upgrade this to GPT-powered message generation for richer variety.
+M2: tries LLM-powered message generation via COUPLE_COPY_PROMPT
+for richer emotional variety. Falls back to M1 template bank.
 """
 
+import json
 from typing import Dict, Any, List
 
 from agents.state import AgentState
+from prompts import COUPLE_MESSAGE_PROMPT, COUPLE_COPY_PROMPT
+from services.llm import call_llm
 
 
-# ── Message templates by activity type ───────────────────────────
+def _fill_prompt(template: str, **kwargs) -> str:
+    """Fill template placeholders using str.replace (avoids JSON {} conflict)."""
+    result = template
+    for key, val in kwargs.items():
+        result = result.replace("{" + key + "}", str(val))
+    return result
+
+
+# ── Message templates by activity type (M1 fallback) ─────────────
 
 _TEMPLATES: Dict[str, List[str]] = {
     "自然": [
@@ -53,34 +64,85 @@ _TEMPLATES: Dict[str, List[str]] = {
 def _pick_message(act_name: str, act_type: str) -> str:
     """Select a template-based couple message for the given activity."""
     import random
-
     templates = _TEMPLATES.get(act_type, _TEMPLATES["景点"])
     template = random.choice(templates)
     return template.format(name=act_name)
 
 
+def _generate_llm_message(destination: str, act_name: str, act_type: str, period: str, weather: str) -> str | None:
+    """Try to generate a couple message via LLM. Returns None on failure."""
+    prompt = _fill_prompt(
+        COUPLE_COPY_PROMPT,
+        destination=destination,
+        activity_name=act_name,
+        activity_type=act_type,
+        period=period,
+        weather_condition=weather,
+    )
+    try:
+        result = call_llm(
+            system_prompt="你是一个温柔细腻的情感文案写手。请直接输出一句情侣寄语，不要加任何前缀或后缀。",
+            user_prompt=prompt,
+            mock_response={},
+        )
+        text = result.get("message", result.get("text", ""))
+        if text:
+            # Ensure 8-25 chars
+            if len(text) > 25:
+                # Try to find last complete clause
+                for sep in ("。", "，", ".", ","):
+                    idx = text[:25].rfind(sep)
+                    if idx > 8:
+                        text = text[:idx + 1]
+                        break
+                else:
+                    text = text[:25]
+            if len(text) >= 6:
+                return text
+    except Exception:
+        pass
+    return None
+
+
 def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     """Append a couple_note to every activity in the draft itinerary.
 
-    In M1 this uses a simple template bank.
-    M5 upgrades to LLM-generated messages with richer emotional range.
+    M2: tries LLM-generated messages first via COUPLE_COPY_PROMPT.
+    Falls back to M1 template bank when API key is absent.
 
     Returns:
         Partial state with draft_itinerary activities enriched,
         and couple_notes list populated.
     """
+    params = state.get("parsed_params", {})
+    destination = params.get("destination", "")
+    weather = state.get("weather_data", {})
     draft = state.get("draft_itinerary", {})
     all_notes: List[str] = []
 
     for day_data in draft.get("days", []):
+        day_idx = day_data.get("day_index", 0)
+        date_key = list(weather.keys())[day_idx] if day_idx < len(weather) else ""
+        w = weather.get(date_key, {})
         day_notes: List[str] = []
+
         for act in day_data.get("activities", []):
-            note = _pick_message(act["name"], act.get("type", "景点"))
+            act_name = act["name"]
+            act_type = act.get("type", "景点")
+            period = act.get("period", "上午")
+
+            # Try LLM first
+            note = _generate_llm_message(
+                destination, act_name, act_type, period, w.get("condition", "晴")
+            )
+            if note is None:
+                note = _pick_message(act_name, act_type)
+
             act["couple_note"] = note
             day_notes.append(note)
 
         if day_notes:
-            all_notes.append(day_notes[0])  # collect one highlight per day
+            all_notes.append(day_notes[0])
 
     return {
         "draft_itinerary": draft,

@@ -1,7 +1,7 @@
 ﻿"""Food Search Tool — LangChain-compatible restaurant discovery.
 
 Returns curated restaurant recommendations with atmosphere tags for couples.
-Uses local mock data; API interface reserved for future (高德/Google Places).
+Uses local mock data; API interface reserved for future (Amap / Google Places).
 """
 
 import json
@@ -121,32 +121,30 @@ def _match_city(city: str) -> Optional[str]:
     return None
 
 
-def _filter_by_budget_and_cuisine(restaurants: list, cuisine: str, budget_per_person: float) -> list:
-    """Filter and score restaurants."""
+def _filter_and_score(restaurants: list, cuisine: str, budget_per_person: float) -> list:
+    """Filter by budget (strict) and cuisine (soft score boost), then sort by couple_score."""
+    # Strict budget filter
+    if budget_per_person > 0:
+        restaurants = [r for r in restaurants if r["avg_cost"] <= budget_per_person]
+
+    # Score by cuisine match and couple_score
     scored = []
     for r in restaurants:
-        score = 0
+        score = 0.0
         if cuisine and cuisine != "不限":
-            # Exact or partial cuisine match
             if cuisine in r["cuisine"] or r["cuisine"] in cuisine:
                 score += 3
-            # Broad match
-            broad_cuisine_map = {
+            broad_map = {
                 "中餐": ["川菜", "杭帮菜", "粤菜", "白族菜", "纳西菜", "海南菜", "云南菜", "素食"],
                 "西餐": ["西餐", "融合菜", "西式简餐"],
                 "火锅": ["火锅"],
                 "小吃": ["小吃"],
                 "海鲜": ["海鲜"],
             }
-            for broad, specifics in broad_cuisine_map.items():
+            for broad, specifics in broad_map.items():
                 if cuisine in (broad,) and r["cuisine"] in specifics:
                     score += 2
-        if budget_per_person > 0:
-            if r["avg_cost"] <= budget_per_person:
-                score += 1
-            if r["avg_cost"] <= budget_per_person * 0.8:
-                score += 1
-        scored.append((score + r["couple_score"] / 10, r))
+        scored.append((score + r.get("couple_score", 5) / 10, r))
     scored.sort(key=lambda x: -x[0])
     return [r for _, r in scored]
 
@@ -155,16 +153,16 @@ def _filter_by_budget_and_cuisine(restaurants: list, cuisine: str, budget_per_pe
 
 @tool
 def food_search_tool(city: str, cuisine: str = "不限", budget_per_person: float = 0.0) -> str:
-    """搜索指定城市的餐厅推荐，可按菜系和人均预算筛选。
+    """Search for restaurants in a city, filterable by cuisine and per-person budget.
 
-    参数:
-        city: 城市名称，如"大理"、"成都"、"三亚"
-        cuisine: 菜系偏好，如"中餐"、"火锅"、"西餐"、"海鲜"、"小吃"、"素食"、"不限"
-        budget_per_person: 人均预算上限（元），0表示不限
+    Args:
+        city: City name (Chinese), e.g. "大理", "成都", "三亚".
+        cuisine: Cuisine preference, e.g. "中餐", "火锅", "西餐", "海鲜", "不限".
+        budget_per_person: Per-person budget ceiling (yuan). 0 = no limit.
 
-    返回:
-        JSON数组字符串，每个餐厅包含名称、菜系、人均消费、氛围标签、
-        评分和情侣推荐指数。
+    Returns:
+        JSON array of restaurants with name, cuisine, avg_cost, atmosphere tags,
+        rating, and couple_score.
     """
     city_key = _match_city(city)
 
@@ -183,5 +181,5 @@ def food_search_tool(city: str, cuisine: str = "不限", budget_per_person: floa
              "description": f"{city}最热闹的夜市，各种地道小吃应有尽有。"},
         ]
 
-    filtered = _filter_by_budget_and_cuisine(restaurants, cuisine, budget_per_person)
+    filtered = _filter_and_score(restaurants, cuisine, budget_per_person)
     return json.dumps(filtered, ensure_ascii=False)

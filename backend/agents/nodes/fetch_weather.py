@@ -1,50 +1,43 @@
 ﻿"""fetch_weather — Retrieve weather forecasts for trip dates.
 
-M1 placeholder: returns mock weather data keyed by date.
-M2 will replace this with a real API call (OpenWeatherMap / 和风天气).
+M2: delegates to weather_tool which tries OpenWeatherMap first,
+falls back to a 12-city seasonal mock database on failure.
 """
 
-from typing import Dict, Any
+import json
 from datetime import date, timedelta
+from typing import Dict, Any
 
 from agents.state import AgentState
+from tools.weather_tool import weather_tool_sync
 
 
 def fetch_weather(state: AgentState) -> Dict[str, Any]:
     """Look up weather for the destination + date range.
 
-    In M1 this node returns hard-coded mock data so the rest of the
-    pipeline can be exercised without an API key.
+    Uses num_days from parsed_params to determine how many forecast
+    days to fetch, starting from start_date.
 
     Returns:
         Partial state with weather_data populated.
     """
     params = state.get("parsed_params", {})
+    destination = params.get("destination", "")
     start_str = params.get("start_date", "")
     num_days = params.get("num_days", 1)
 
-    weather: Dict[str, dict] = {}
-
+    # Compute end_date from start + num_days (weather for travel days only)
     try:
         sd = date.fromisoformat(str(start_str))
+        end_str = (sd + timedelta(days=num_days - 1)).isoformat()
     except (ValueError, TypeError):
-        sd = date.today()
+        from datetime import date as dt
+        sd = dt.today()
+        end_str = (sd + timedelta(days=num_days - 1)).isoformat()
 
-    # ── mock weather rotation ────────────────────────────────────
-    conditions = ["晴", "晴转多云", "多云", "小雨", "晴", "晴", "多云"]
-    for i in range(num_days):
-        day = sd + timedelta(days=i)
-        key = day.isoformat()
-        cond = conditions[i % len(conditions)]
-        weather[key] = {
-            "condition": cond,
-            "high": 26.0 + i,
-            "low": 16.0 + i,
-            "humidity": 55 + i * 3,
-            "wind": "微风",
-        }
+    weather_data = weather_tool_sync(destination, start_str, end_str)
 
     return {
-        "weather_data": weather,
+        "weather_data": weather_data,
         "current_phase": "fetch_weather",
     }

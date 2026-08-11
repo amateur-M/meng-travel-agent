@@ -1,23 +1,16 @@
 ﻿"""plan_itinerary — Core LLM node that generates the day-by-day itinerary.
 
-This is the heaviest node in the graph.  It formats a prompt from parsed
-params, weather data, and POI / food lists, then calls the LLM to produce
-a structured draft.
-
-M1 implementation: constructs a rich prompt and calls the LLM.
-When no API key is available, falls back to a rule-based mock itinerary
-so the rest of the graph remains testable.
+M2: uses shared LLM service (services.llm.call_llm) and the new
+PLAN_ITINERARY_PROMPT from prompts/plan_itinerary_prompt.md.
+Falls back to rule-based mock when API key is absent.
 """
 
 import json
 from typing import Dict, Any
 
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-
 from agents.state import AgentState
-from prompts import SYSTEM_PROMPT, ITINERARY_PROMPT
-from config.settings import settings
+from prompts import SYSTEM_PROMPT, PLAN_ITINERARY_PROMPT
+from services.llm import call_llm
 
 
 def _build_prompt(state: AgentState) -> str:
@@ -40,6 +33,7 @@ def _build_prompt(state: AgentState) -> str:
     poi_lines = [
         f"  {i+1}. {p['name']} ({p.get('type','?')}) "
         f"⭐{p.get('rating','?')} ¥{p.get('cost',0)} — {p.get('location','')}"
+        + (f" [couple_score={p.get('couple_score','?')}]" if "couple_score" in p else "")
         for i, p in enumerate(pois[:8])
     ]
     poi_summary = "\n".join(poi_lines) if poi_lines else "暂无景点数据"
@@ -47,7 +41,8 @@ def _build_prompt(state: AgentState) -> str:
     # ── food summary ─────────────────────────────────────────────
     food_lines = [
         f"  {i+1}. {f['name']} ({f.get('cuisine','?')}) "
-        f"⭐{f.get('rating','?')} 人均¥{f.get('avg_cost',0)} — {f.get('location','')}"
+        f"⭐{f.get('rating','?')} 人均¥{f.get('avg_cost',0)}"
+        + (f" [{', '.join(f.get('atmosphere', []))}]" if f.get("atmosphere") else "")
         for i, f in enumerate(foods[:6])
     ]
     food_summary = "\n".join(food_lines) if food_lines else "暂无餐厅数据"
@@ -63,20 +58,6 @@ def _build_prompt(state: AgentState) -> str:
     elif pace == "充实":
         extra = "可以适当增加活动密度，但每档仍最多2个活动。"
 
-    return ITINERARY_PROMPT.format(
-        num_days=num_days,
-        destination=params.get("destination", ""),
-        start_date=params.get("start_date", ""),
-        end_date=params.get("end_date", ""),
-        budget=budget,
-        preferences="、".join(params.get("preferences", [])),
-        pace=pace,
-        weather_summary=weather_summary,
-        poi_summary=poi_summary,
-        food_summary=food_summary,
-        daily_budget=daily,
-        extra_instructions=extra,
-    )
 
 
 def _mock_itinerary(state: AgentState) -> dict:
@@ -92,7 +73,6 @@ def _mock_itinerary(state: AgentState) -> dict:
         date_key = list(weather.keys())[d] if d < len(weather) else ""
         w = weather.get(date_key, {})
 
-        # pick POIs in rotation
         p1 = pois[d % len(pois)] if pois else {"name": "城市漫步", "cost": 0, "type": "自然"}
         p2 = pois[(d + 1) % len(pois)] if len(pois) > 1 else {"name": "当地博物馆", "cost": 0, "type": "文化"}
         f1 = foods[d % len(foods)] if foods else {"name": "本地餐厅", "avg_cost": 60, "cuisine": "本地菜"}
@@ -142,42 +122,41 @@ def _mock_itinerary(state: AgentState) -> dict:
 def plan_itinerary(state: AgentState) -> Dict[str, Any]:
     """Generate a day-by-day itinerary using the LLM.
 
-    If OPENAI_API_KEY is configured, the real LLM is called.
-    Otherwise, falls back to _mock_itinerary so M1 is always runnable.
+    If OPENAI_API_KEY is configured, the real LLM is called via
+    services.llm.call_llm().  Otherwise, falls back to _mock_itinerary
+    so the graph remains testable.
 
     Returns:
         Partial state with draft_itinerary populated.
     """
     prompt = _build_prompt(state)
 
-    draft: dict = {}
-
-    if settings.openai_api_key:
-        try:
-            llm = ChatOpenAI(
-                model=settings.openai_model,
-                api_key=settings.openai_api_key,
-                temperature=0.7,
-            )
-            messages = [
-                SystemMessage(content=SYSTEM_PROMPT),
-                HumanMessage(content=prompt),
-            ]
-            response = llm.invoke(messages)
-            # Try to parse JSON from the response
-            content = response.content if hasattr(response, "content") else str(response)
-            # Strip markdown code fences if present
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0]
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0]
-            draft = json.loads(content.strip())
-        except Exception:
-            draft = _mock_itinerary(state)
-    else:
-        draft = _mock_itinerary(state)
+    draft = call_llm(
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=prompt,
+        mock_response=_mock_itinerary(state),
+    )
 
     return {
         "draft_itinerary": draft,
         "current_phase": "plan_itinerary",
     }
+    # Use str.replace() to avoid escaping { } in JSON examples inside the .md template
+    replacements = {
+        "{num_days}": str(num_days),
+        "{destination}": str(params.get("destination", "")),
+        "{start_date}": str(params.get("start_date", "")),
+        "{end_date}": str(params.get("end_date", "")),
+        "{budget}": str(budget),
+        "{preferences}": "、".join(params.get("preferences", [])),
+        "{pace}": str(pace),
+        "{weather_summary}": weather_summary,
+        "{poi_summary}": poi_summary,
+        "{food_summary}": food_summary,
+        "{daily_budget}": str(daily),
+        "{extra_instructions}": extra,
+    }
+    prompt = PLAN_ITINERARY_PROMPT
+    for key, val in replacements.items():
+        prompt = prompt.replace(key, val)
+    return prompt

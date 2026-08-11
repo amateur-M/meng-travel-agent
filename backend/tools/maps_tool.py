@@ -2,7 +2,7 @@
 
 Computes optimal travel routes between coordinates.
 Uses haversine distance + simple transit estimation as mock;
-API interface reserved for future (高德/Google Maps Directions).
+API interface reserved for future (Amap / Google Maps Directions).
 """
 
 import json
@@ -30,46 +30,35 @@ def _haversine(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
 
 def _estimate_transit(distance_km: float) -> dict:
     """Estimate transit time by different modes."""
-    # Driving: ~40 km/h in city, ~60 km/h highway
     drive_speed = 50.0
-    # Public transit: slower, with wait time
     transit_speed = 30.0
-    # Walking: 5 km/h
     walk_speed = 5.0
 
     drive_min = round(distance_km / drive_speed * 60)
-    transit_min = round(distance_km / transit_speed * 60 + 10)  # +10 min wait
+    transit_min = round(distance_km / transit_speed * 60 + 10)
     walk_min = round(distance_km / walk_speed * 60)
 
     return {
         "distance_km": round(distance_km, 1),
-        "drive": {"duration_min": drive_min, "method": "驾车"},
-        "transit": {"duration_min": transit_min, "method": "公共交通"},
-        "walk": {"duration_min": walk_min, "method": "步行"} if walk_min <= 60 else None,
+        "drive": {"duration_min": drive_min, "method": "Driving"},
+        "transit": {"duration_min": transit_min, "method": "Transit"},
+        "walk": {"duration_min": walk_min, "method": "Walking"} if walk_min <= 60 else None,
     }
 
 
 # ── Greedy nearest-neighbor route ────────────────────────────────
 
 def _optimal_route(points: List[Tuple[float, float, str]]) -> dict:
-    """Compute a simple nearest-neighbor route between POIs.
-
-    Args:
-        points: List of (lat, lng, name) tuples.
-
-    Returns:
-        dict with ordered route and cumulative distances/times.
-    """
+    """Compute a simple nearest-neighbor route between POIs."""
     if len(points) < 2:
         return {
-            "route": points,
+            "route": [p[2] for p in points],
             "segments": [],
             "total_distance_km": 0.0,
             "total_drive_min": 0,
             "total_transit_min": 0,
         }
 
-    # Start from first point; visit nearest unvisited next
     remaining = list(points[1:])
     current = points[0]
     ordered = [current]
@@ -77,7 +66,6 @@ def _optimal_route(points: List[Tuple[float, float, str]]) -> dict:
     total_dist = 0.0
 
     while remaining:
-        # Find nearest
         best_idx = 0
         best_dist = float("inf")
         for i, pt in enumerate(remaining):
@@ -109,32 +97,32 @@ def _optimal_route(points: List[Tuple[float, float, str]]) -> dict:
 
 @tool
 def maps_tool(coordinates: str) -> str:
-    """根据多个坐标点计算最优路线和交通时间。
+    """Calculate optimal route and transit times between multiple coordinate points.
 
-    参数:
-        coordinates: JSON字符串，格式为 [{"name": "景点名", "lat": 25.6, "lng": 100.2}, ...]
-                     名称用于标注输出路线中的节点。
+    Args:
+        coordinates: JSON string in format [{"name": "Place", "lat": 25.6, "lng": 100.2}, ...]
+                     Names label nodes in the output route.
 
-    返回:
-        JSON字符串，包含最优路线顺序、每段路程的距离和不同交通方式的预估时间。
+    Returns:
+        JSON string containing ordered route, per-segment distances and transit times.
     """
     try:
         raw = json.loads(coordinates)
     except json.JSONDecodeError:
-        return json.dumps({"error": "coordinates 参数必须是有效的 JSON 数组"}, ensure_ascii=False)
+        return json.dumps({"error": "coordinates must be a valid JSON array"}, ensure_ascii=False)
 
     if not isinstance(raw, list) or len(raw) == 0:
-        return json.dumps({"error": "coordinates 必须是非空数组"}, ensure_ascii=False)
+        return json.dumps({"error": "coordinates must be a non-empty array"}, ensure_ascii=False)
 
     points: List[Tuple[float, float, str]] = []
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
-            return json.dumps({"error": f"第{i}个元素不是对象"}, ensure_ascii=False)
-        name = item.get("name", f"地点{i+1}")
+            return json.dumps({"error": f"Element {i} is not an object"}, ensure_ascii=False)
+        name = item.get("name", f"Place {i+1}")
         lat = item.get("lat")
         lng = item.get("lng")
         if lat is None or lng is None:
-            return json.dumps({"error": f"{name} 缺少 lat 或 lng 字段"}, ensure_ascii=False)
+            return json.dumps({"error": f"{name} missing lat or lng field"}, ensure_ascii=False)
         points.append((float(lat), float(lng), name))
 
     result = _optimal_route(points)

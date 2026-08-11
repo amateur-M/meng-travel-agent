@@ -48,20 +48,20 @@
 必须输出严格符合以下 JSON Schema 的行程：
 
 ```json
-{
+{{
   "destination": "大理",
   "start_date": "2026-08-15",
   "end_date": "2026-08-18",
   "budget": 5000,
   "days": [
-    {
+    {{
       "day_index": 0,
       "trip_date": "2026-08-15",
       "weather_condition": "晴",
       "weather_high": 28.0,
       "weather_low": 18.0,
       "activities": [
-        {
+        {{
           "period": "上午",
           "name": "洱海环湖骑行",
           "type": "户外",
@@ -109,9 +109,9 @@
 ## 示例（部分）
 
 ```json
-{
+{{
   "activities": [
-    {
+    {{
       "period": "上午",
       "name": "苍山洗马潭索道",
       "type": "自然",
@@ -123,7 +123,7 @@
       "weather_note": "阴雨天山顶能见度低，建议改期",
       "indoor_backup": "周城扎染博物馆"
     },
-    {
+    {{
       "period": "下午",
       "name": "古城午后漫步",
       "type": "留白",
@@ -133,7 +133,7 @@
       "estimated_cost": 50.0,
       "location": "大理古城"
     },
-    {
+    {{
       "period": "晚间",
       "name": "洱海边·落日餐厅",
       "type": "美食",

@@ -4,7 +4,7 @@
 |-----------|--------|------------|----------|-------|
 | M0 | Done | 2026-08-10 | 2026-08-10 | Project scaffold complete |
 | M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
-| M2 | In Progress | 2026-08-11 | — | External API integration |
+| M2 | In Progress | 2026-08-11 | — | External API + LLM integration |
 | M3 | Pending | — | — | Frontend basic UI |
 | M4 | Pending | — | — | Budget + weather |
 | M5 | Pending | — | — | Rhythm + couple messages |
@@ -57,30 +57,37 @@
 - [x] **Result: 96/96 passed**
 
 
-## M2 In-Progress Tasks
+## M2 Progress
 
-- [x] 4 LangChain Tools implemented in tools/:
-  - [x] weather_tool.py — OpenWeatherMap API + mock fallback, @tool decorator
-  - [x] poi_search_tool.py — Rich mock POI database (5 cities, ~50 attractions), @tool decorator
-  - [x] food_search_tool.py — Rich mock restaurant database (5 cities, ~25 restaurants), @tool decorator
-  - [x] maps_tool.py — Haversine distance + nearest-neighbor routing, @tool decorator
-  - [x] tools/__init__.py exports all four tools
-- [x] 5 Prompt templates in prompts/ (as .md files):
-  - [x] parse_input_prompt.md — Extract structured travel parameters
-  - [x] plan_itinerary_prompt.md — Core itinerary orchestration (romantic pacing)
-  - [x] couple_copy_prompt.md — Couple message generation per activity
-  - [x] weather_adapt_prompt.md — Rain/heat weather adaptation rules
-  - [x] budget_downgrade_prompt.md — Budget overflow downgrade strategies
-  - [x] prompts/__init__.py loads .md templates + retains M1 inline templates for backward compat
-- [ ] Wire tools into existing nodes (fetch_weather, search_poi, search_food, etc.)
-- [ ] Integrate OpenWeatherMap real API call
-- [ ] Write tool unit tests (test_tools.py)
-- [ ] Write prompt template tests (test_prompts.py update)
-- [ ] Integrate OpenAI GPT-4o for real LLM-powered itinerary generation
+### Tools & Prompts (done 2026-08-11)
+- [x] 4 LangChain Tools: weather, poi_search, food_search, maps_tool
+- [x] 5 Prompt .md templates: parse_input, plan_itinerary, couple_copy, weather_adapt, budget_downgrade
+- [x] prompts/__init__.py loads .md templates + retains M1 inline templates
+
+### Node Wiring & LLM Service (done 2026-08-11)
+- [x] fetch_weather.py → weather_tool_sync
+- [x] search_poi.py → poi_search_tool
+- [x] search_food.py → food_search_tool
+- [x] Shared LLM service: services/llm.py (call_llm with mock fallback)
+- [x] plan_itinerary.py → services.llm.call_llm + PLAN_ITINERARY_PROMPT
+- [x] budget_check.py → services.llm.call_llm + BUDGET_DOWNGRADE_PROMPT
+- [x] adapt_weather.py → services.llm.call_llm + WEATHER_ADAPT_PROMPT + rule-based fallback
+- [x] add_couple_touch.py → services.llm.call_llm + COUPLE_COPY_PROMPT + template fallback
+
+### Tests (done 2026-08-11)
+- [x] test_tools.py (21 tests) — All 4 tools: weather, poi, food, maps
+- [x] test_services.py (7 tests) — LLM service + JSON extraction
+- [x] All existing M1 tests updated for new data structures
+- [x] **Result: 121/121 passed** (M1 96 → M2 121)
+
+### Remaining
+- [ ] Configure real API keys and test with live APIs
+- [ ] Integration smoke test with real OpenAI GPT-4o
+- [ ] vcrpy cassette tests for external API calls
 
 ## Verification
 
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
-- M2 tools and prompts created, pending wiring and testing
+- Backend M2 tools + services + node wiring tested (121/121)
