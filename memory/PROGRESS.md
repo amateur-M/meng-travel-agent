@@ -74,15 +74,20 @@
 - [x] adapt_weather.py → services.llm.call_llm + WEATHER_ADAPT_PROMPT + rule-based fallback
 - [x] add_couple_touch.py → services.llm.call_llm + COUPLE_COPY_PROMPT + template fallback
 
-### Tests (done 2026-08-11)
+### Multi-Provider LLM (done 2026-08-12)
+- [x] DeepSeek (deepseek-chat), Qwen (qwen-plus), Kimi (moonshot-v1-8k)
+- [x] All use OpenAI-compatible API — zero new dependencies
+- [x] DEFAULT_LLM_PROVIDER env var controls default, call_llm() accepts optional provider arg
+
+### Tests
 - [x] test_tools.py (21 tests) — All 4 tools: weather, poi, food, maps
-- [x] test_services.py (7 tests) — LLM service + JSON extraction
+- [x] test_services.py (16 tests) — LLM service + JSON extraction + multi-provider
 - [x] All existing M1 tests updated for new data structures
-- [x] **Result: 121/121 passed** (M1 96 → M2 121)
+- [x] **Result: 130/130 passed** (M1 96 → M2 130)
 
 ### Remaining
 - [ ] Configure real API keys and test with live APIs
-- [ ] Integration smoke test with real OpenAI GPT-4o
+- [ ] Integration smoke test with real LLM calls (any provider)
 - [ ] vcrpy cassette tests for external API calls
 
 ## Verification
@@ -90,4 +95,4 @@
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
-- Backend M2 tools + services + node wiring tested (121/121)
+- Backend M2 tools + services + node wiring + multi-provider tested (130/130)

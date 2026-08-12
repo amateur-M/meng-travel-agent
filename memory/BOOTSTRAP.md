@@ -2,12 +2,12 @@
 
 **一句话描述**：AI 驱动的旅游规划助手，根据日期、出发地、目的地、天气、景点、美食、预算与偏好，自动生成可执行的情侣行程。
 
-**技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o
+**技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M2 核心完成（Tools + Prompt 模板 + LLM 服务层 + Node 接入 + 121 测试全通过）。
+**当前阶段**：M2 核心完成（Tools + Prompt 模板 + LLM 服务层 + Node 接入 + 130 测试全通过）。
 
 **下一步行动**：
-1. 配置真实 API Key 并验证实时调用（OpenAI / OpenWeatherMap / 高德）
+1. 配置真实 API Key 并验证实时调用（OpenAI / DeepSeek / Qwen / Kimi / OpenWeatherMap / 高德）
 2. 启动 M3：前端基础 UI（TripForm + ItineraryCard）
 
 ---
@@ -52,7 +52,7 @@
 | Node → Tool 接入 | ✅ | fetch_weather/search_poi/search_food 全部接入 |
 | LLM 服务层 | ✅ | services/llm.py — call_llm() 统一入口 + mock fallback |
 | Node → LLM 接入 | ✅ | plan_itinerary/budget_check/adapt_weather/add_couple_touch 全部接入 |
-| 测试 | ✅ | 121/121 (M2 新增 25 个，含 tools + services + LLM mock) |
+| 测试 | ✅ | 130/130 (含 tools + services + multi-provider LLM) |
 | 真实 API 验证 | ⏳ | 待配置 API Key |
 
 ---
@@ -62,6 +62,9 @@
 | 服务 | 用途 | 所需密钥 |
 |------|------|----------|
 | OpenAI GPT-4o | LLM 推理（行程生成、寄语生成） | `OPENAI_API_KEY` |
+| DeepSeek | LLM 推理（可选 provider） | `DEEPSEEK_API_KEY` |
+| Qwen（通义千问） | LLM 推理（可选 provider） | `QWEN_API_KEY` |
+| Kimi（月之暗面） | LLM 推理（可选 provider） | `KIMI_API_KEY` |
 | OpenWeatherMap | 天气预报 | `WEATHER_API_KEY` |
 | 高德地图 / Google Maps | POI 搜索、地理编码 | `MAP_API_KEY` |
 
