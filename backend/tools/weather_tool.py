@@ -1,6 +1,7 @@
 ﻿"""Weather Tool — LangChain-compatible weather forecast fetcher.
 
-Supports both real API (OpenWeatherMap) and mock fallback.
+Supports real APIs (QWeather/和风天气 default, OpenWeatherMap fallback)
+and a mock fallback.
 Registered as a LangChain @tool for use in agent chains.
 """
 
@@ -154,6 +155,282 @@ async def _fetch_openweathermap(city: str, start: str, end: str) -> dict:
     return result
 
 
+# ── QWeather (和风天气) client ────────────────────────────────────
+
+def _parse_qweather_daily(daily: list, start: str, end: str) -> dict:
+    """Convert QWeather `daily` entries into the shared weather dict."""
+    try:
+        sd = date.fromisoformat(start)
+        ed = date.fromisoformat(end)
+    except (ValueError, TypeError):
+        sd = date.today()
+        ed = sd + timedelta(days=2)
+
+    result: dict = {}
+    for day in daily:
+        fx_date = day.get("fxDate", "")
+        if not fx_date:
+            continue
+        try:
+            d = date.fromisoformat(fx_date)
+        except ValueError:
+            continue
+        if not (sd <= d <= ed):
+            continue
+
+        text_day = day.get("textDay", "")
+        text_night = day.get("textNight", "")
+        condition = text_day or text_night or "晴"
+        is_rain = any(w in (text_day + text_night) for w in ("雨", "雪", "雷", "阵"))
+        temp_max = float(day.get("tempMax", 0))
+        temp_min = float(day.get("tempMin", 0))
+        wind_dir = day.get("windDirDay", "")
+        wind_scale = day.get("windScaleDay", "")
+        wind = f"{wind_dir}{wind_scale}级" if wind_scale else "微风"
+
+        result[fx_date] = {
+            "condition": condition,
+            "condition_en": "rain" if is_rain else "clear" if "晴" in condition else "cloudy",
+            "high": round(temp_max, 1),
+            "low": round(temp_min, 1),
+            "feels_like": round((temp_max + temp_min) / 2, 1),
+            "precip_prob": 0.75 if is_rain else (0.3 if "云" in condition else 0.1),
+            "humidity": float(day.get("humidity", 60)),
+            "wind": wind,
+            "source": "qweather",
+        }
+
+    if not result:
+        raise ValueError("No QWeather data in the requested date range")
+    return result
+
+
+def _condition_en(condition: str) -> str:
+    """Map a Chinese QWeather condition to the shared condition enum."""
+    if any(w in condition for w in ("雨", "雪", "雷", "阵")):
+        return "rain"
+    if "晴" in condition:
+        return "clear"
+    return "cloudy"
+
+
+def _parse_qweather_v1_daily(days: list, start: str, end: str) -> dict:
+    """Convert QWeather v1 daily forecast entries into the shared dict."""
+    try:
+        sd = date.fromisoformat(start)
+        ed = date.fromisoformat(end)
+    except (ValueError, TypeError):
+        sd = date.today()
+        ed = sd + timedelta(days=2)
+
+    result: dict = {}
+    for day in days:
+        forecast_start = day.get("forecastStartTime", "")
+        day_key = forecast_start[:10] if forecast_start else ""
+        if not day_key:
+            continue
+        try:
+            d = date.fromisoformat(day_key)
+        except ValueError:
+            continue
+        if not (sd <= d <= ed):
+            continue
+
+        daytime = day.get("daytime", {}) or {}
+        nighttime = day.get("nighttime", {}) or {}
+        day_condition = (daytime.get("condition") or {}).get("text", "")
+        night_condition = (nighttime.get("condition") or {}).get("text", "")
+        condition = day_condition or night_condition or "晴"
+
+        temp_max = float((day.get("temperatureMax") or {}).get("value", 0) or 0)
+        temp_min = float((day.get("temperatureMin") or {}).get("value", 0) or 0)
+        feels_like = float(
+            (day.get("temperatureAvg") or {}).get("value", 0)
+            or (temp_max + temp_min) / 2
+        )
+
+        day_precip = (daytime.get("precipitation") or {}).get("probability", 0)
+        night_precip = (nighttime.get("precipitation") or {}).get("probability", 0)
+        precip_prob = float(max(day_precip or 0, night_precip or 0))
+
+        humidity = float(daytime.get("humidity", nighttime.get("humidity", 0)) or 0)
+        if 0 < humidity <= 1:
+            humidity = round(humidity * 100)
+
+        wind = daytime.get("wind") or {}
+        wind_scale = wind.get("scale", "")
+        wind_compass = (wind.get("direction") or {}).get("compass", "")
+        wind_text = f"{wind_compass}风{wind_scale}级" if wind_scale else "微风"
+
+        result[day_key] = {
+            "condition": condition,
+            "condition_en": _condition_en(condition),
+            "high": round(temp_max, 1),
+            "low": round(temp_min, 1),
+            "feels_like": round(feels_like, 1),
+            "precip_prob": round(precip_prob, 2),
+            "humidity": float(humidity),
+            "wind": wind_text,
+            "source": "qweather",
+        }
+
+    if not result:
+        raise ValueError("No QWeather data in the requested date range")
+    return result
+
+
+def _qweather_headers() -> dict:
+    """Build QWeather JWT authentication headers."""
+    return {"Authorization": f"Bearer {settings.weather_api_key}"}
+
+
+def _forecast_days(start: str, end: str) -> int:
+    """Return the number of daily forecast entries to request (max 10)."""
+    try:
+        sd = date.fromisoformat(start)
+        ed = date.fromisoformat(end)
+        return max(1, min(10, (ed - sd).days + 1))
+    except (ValueError, TypeError):
+        return 3
+
+
+async def _lookup_qweather_city(city: str) -> tuple[float, float]:
+    """Resolve a city name to lat/lon with QWeather GeoAPI."""
+    url = f"{settings.qweather_base_url.rstrip('/')}/geo/v2/city/lookup"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.get(
+            url,
+            params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
+            headers=_qweather_headers(),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != "200" or not data.get("location"):
+            raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
+
+    location = data["location"][0]
+    return float(location["lat"]), float(location["lon"])
+
+
+def _lookup_qweather_city_sync(city: str) -> tuple[float, float]:
+    """Synchronous city-to-lat/lon lookup for QWeather GeoAPI."""
+    url = f"{settings.qweather_base_url.rstrip('/')}/geo/v2/city/lookup"
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.get(
+            url,
+            params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
+            headers=_qweather_headers(),
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != "200" or not data.get("location"):
+            raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
+
+    location = data["location"][0]
+    return float(location["lat"]), float(location["lon"])
+
+
+async def _fetch_qweather(city: str, start: str, end: str) -> dict:
+    """Fetch real weather from QWeather's current JWT-authenticated API."""
+    api_key = settings.weather_api_key
+    if not api_key:
+        raise ValueError("WEATHER_API_KEY not configured for QWeather")
+
+    lat, lon = await _lookup_qweather_city(city)
+    weather_url = f"{settings.qweather_base_url.rstrip('/')}/weather/v1/daily/{lat}/{lon}"
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        weather_resp = await client.get(
+            weather_url,
+            params={
+                "days": str(_forecast_days(start, end)),
+                "localTime": "true",
+                "lang": "zh",
+            },
+            headers=_qweather_headers(),
+        )
+        weather_resp.raise_for_status()
+        weather_data = weather_resp.json()
+
+    daily = weather_data.get("days", [])
+    if not daily:
+        raise ValueError("QWeather returned empty daily forecast")
+
+    return _parse_qweather_v1_daily(daily, start, end)
+
+
+def _fetch_qweather_sync(city: str, start: str, end: str) -> dict:
+    """Synchronous QWeather fetch used by the LangGraph node path."""
+    api_key = settings.weather_api_key
+    if not api_key:
+        raise ValueError("WEATHER_API_KEY not configured for QWeather")
+
+    lat, lon = _lookup_qweather_city_sync(city)
+    weather_url = f"{settings.qweather_base_url.rstrip('/')}/weather/v1/daily/{lat}/{lon}"
+
+    with httpx.Client(timeout=10.0) as client:
+        weather_resp = client.get(
+            weather_url,
+            params={
+                "days": str(_forecast_days(start, end)),
+                "localTime": "true",
+                "lang": "zh",
+            },
+            headers=_qweather_headers(),
+        )
+        weather_resp.raise_for_status()
+        weather_data = weather_resp.json()
+
+    daily = weather_data.get("days", [])
+    if not daily:
+        raise ValueError("QWeather returned empty daily forecast")
+
+    return _parse_qweather_v1_daily(daily, start, end)
+
+
+def _fetch_openweathermap_sync(city: str, start: str, end: str) -> dict:
+    """Synchronous OpenWeatherMap fetch (legacy provider fallback)."""
+    api_key = settings.weather_api_key
+    if not api_key:
+        raise ValueError("WEATHER_API_KEY not configured for OpenWeatherMap")
+
+    url = "https://api.openweathermap.org/data/2.5/forecast"
+    with httpx.Client(timeout=10.0) as client:
+        resp = client.get(url, params={
+            "q": city,
+            "appid": api_key,
+            "units": "metric",
+            "lang": "zh_cn",
+            "cnt": 40,
+        })
+        resp.raise_for_status()
+        data = resp.json()
+
+    by_day: dict = {}
+    for entry in data.get("list", []):
+        dt = entry.get("dt_txt", "")[:10]
+        by_day.setdefault(dt, {"temps": [], "conditions": [], "humidity": []})
+        by_day[dt]["temps"].append(entry["main"]["temp"])
+        by_day[dt]["conditions"].append(entry["weather"][0]["description"])
+        by_day[dt]["humidity"].append(entry["main"]["humidity"])
+
+    result = {}
+    for dt, agg in by_day.items():
+        cond = max(set(agg["conditions"]), key=agg["conditions"].count)
+        result[dt] = {
+            "condition": cond,
+            "condition_en": "rain" if "雨" in cond else "clear",
+            "high": round(max(agg["temps"]), 1),
+            "low": round(min(agg["temps"]), 1),
+            "feels_like": round(sum(agg["temps"]) / len(agg["temps"]), 1),
+            "precip_prob": 0.5 if "雨" in cond else 0.1,
+            "humidity": round(sum(agg["humidity"]) / len(agg["humidity"])),
+            "wind": "微风",
+            "source": "openweathermap",
+        }
+    return result
+
+
 # ── LangChain Tool ───────────────────────────────────────────────
 
 @tool
@@ -168,9 +445,12 @@ async def weather_tool(city: str, start_date: str, end_date: str) -> str:
     返回:
         JSON字符串，包含每天的温度、天气状况、降水概率和体感温度。
     """
-    # 1) Try real API
+    # 1) Try real API (QWeather by default, OpenWeatherMap as legacy fallback)
     try:
-        weather = await _fetch_openweathermap(city, start_date, end_date)
+        if settings.weather_provider == "qweather":
+            weather = await _fetch_qweather(city, start_date, end_date)
+        else:
+            weather = await _fetch_openweathermap(city, start_date, end_date)
         if weather:
             return json.dumps(weather, ensure_ascii=False)
     except Exception:
@@ -183,6 +463,16 @@ async def weather_tool(city: str, start_date: str, end_date: str) -> str:
 
 # ── Sync wrapper (for nodes that are not async) ──────────────────
 
-def weather_tool_sync(city: str, start_date: str, end_date: str) -> str:
-    """Synchronous version of weather_tool for use in non-async nodes."""
+def weather_tool_sync(city: str, start_date: str, end_date: str) -> dict:
+    """Synchronous weather lookup returning the shared weather dict."""
+    try:
+        if settings.weather_provider == "qweather":
+            weather = _fetch_qweather_sync(city, start_date, end_date)
+        else:
+            weather = _fetch_openweathermap_sync(city, start_date, end_date)
+        if weather:
+            return weather
+    except Exception:
+        pass  # fallback to mock silently
+
     return _generate_mock(city, start_date, end_date)

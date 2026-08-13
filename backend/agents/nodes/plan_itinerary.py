@@ -58,6 +58,25 @@ def _build_prompt(state: AgentState) -> str:
     elif pace == "充实":
         extra = "可以适当增加活动密度，但每档仍最多2个活动。"
 
+    replacements = {
+        "{num_days}": str(num_days),
+        "{destination}": str(params.get("destination", "")),
+        "{start_date}": str(params.get("start_date", "")),
+        "{end_date}": str(params.get("end_date", "")),
+        "{budget}": str(budget),
+        "{preferences}": "、".join(params.get("preferences", [])),
+        "{pace}": str(pace),
+        "{weather_summary}": weather_summary,
+        "{poi_summary}": poi_summary,
+        "{food_summary}": food_summary,
+        "{daily_budget}": str(daily),
+        "{extra_instructions}": extra,
+    }
+    prompt = PLAN_ITINERARY_PROMPT
+    for key, val in replacements.items():
+        prompt = prompt.replace(key, val)
+    return prompt
+
 
 
 def _mock_itinerary(state: AgentState) -> dict:
@@ -141,22 +160,3 @@ def plan_itinerary(state: AgentState) -> Dict[str, Any]:
         "draft_itinerary": draft,
         "current_phase": "plan_itinerary",
     }
-    # Use str.replace() to avoid escaping { } in JSON examples inside the .md template
-    replacements = {
-        "{num_days}": str(num_days),
-        "{destination}": str(params.get("destination", "")),
-        "{start_date}": str(params.get("start_date", "")),
-        "{end_date}": str(params.get("end_date", "")),
-        "{budget}": str(budget),
-        "{preferences}": "、".join(params.get("preferences", [])),
-        "{pace}": str(pace),
-        "{weather_summary}": weather_summary,
-        "{poi_summary}": poi_summary,
-        "{food_summary}": food_summary,
-        "{daily_budget}": str(daily),
-        "{extra_instructions}": extra,
-    }
-    prompt = PLAN_ITINERARY_PROMPT
-    for key, val in replacements.items():
-        prompt = prompt.replace(key, val)
-    return prompt

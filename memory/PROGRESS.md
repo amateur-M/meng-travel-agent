@@ -80,14 +80,22 @@
 - [x] DEFAULT_LLM_PROVIDER env var controls default, call_llm() accepts optional provider arg
 
 ### Tests
-- [x] test_tools.py (21 tests) — All 4 tools: weather, poi, food, maps
-- [x] test_services.py (16 tests) — LLM service + JSON extraction + multi-provider
+- [x] test_tools.py — All 4 tools: weather, poi, food, maps
+- [x] test_services.py — LLM service + JSON extraction + multi-provider
 - [x] All existing M1 tests updated for new data structures
-- [x] **Result: 130/130 passed** (M1 96 → M2 130)
+- [x] **Result: 138/138 passed** (M1 96 → M2 138)
+
+### M2 Fixes (2026-08-13)
+- [x] Fixed `plan_itinerary._build_prompt()` so template placeholders are filled and returned
+- [x] Migrated `tools/weather_tool.py` from legacy QWeather `?key=` API to current JWT/Bearer API
+- [x] QWeather GeoAPI city lookup: `GET /geo/v2/city/lookup`
+- [x] QWeather daily forecast: `GET /weather/v1/daily/{latitude}/{longitude}`
+- [x] Added QWeather v1 daily response parser + focused tests
+- [x] Qwen real LLM smoke test passed
 
 ### Remaining
-- [ ] Configure real API keys and test with live APIs
-- [ ] Integration smoke test with real LLM calls (any provider)
+- [ ] Finish QWeather authentication: `.env` currently contains a private key, not a JWT/API key
+- [ ] Re-run real QWeather smoke test after valid JWT or API key is configured
 - [ ] vcrpy cassette tests for external API calls
 
 ## Verification
@@ -95,4 +103,5 @@
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
-- Backend M2 tools + services + node wiring + multi-provider tested (130/130)
+- Backend M2 tools + services + node wiring + multi-provider tested (138/138)
+- Qwen real LLM call returns valid JSON; QWeather real call blocked by authentication config

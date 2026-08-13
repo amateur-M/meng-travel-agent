@@ -31,9 +31,10 @@ class Settings:
     # Default LLM provider: "openai" | "deepseek" | "qwen" | "kimi"
     default_llm_provider: str = os.getenv("DEFAULT_LLM_PROVIDER", "openai")
 
-    # Weather
+    # Weather (QWeather JWT / 和风天气, fallback OpenWeatherMap)
     weather_api_key: str = os.getenv("WEATHER_API_KEY", "")
-    weather_provider: str = os.getenv("WEATHER_PROVIDER", "openweathermap")
+    weather_provider: str = os.getenv("WEATHER_PROVIDER", "qweather")
+    qweather_base_url: str = os.getenv("QWEATHER_BASE_URL", "https://devapi.qweather.com")
 
     # Maps
     maps_api_key: str = os.getenv("MAPS_API_KEY", "")

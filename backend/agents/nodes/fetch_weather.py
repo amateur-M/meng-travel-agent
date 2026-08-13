@@ -1,6 +1,6 @@
 ﻿"""fetch_weather — Retrieve weather forecasts for trip dates.
 
-M2: delegates to weather_tool which tries OpenWeatherMap first,
+M2: delegates to weather_tool which tries QWeather (和风天气) first,
 falls back to a 12-city seasonal mock database on failure.
 """
 

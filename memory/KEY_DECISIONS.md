@@ -97,3 +97,21 @@
 - Enables immediate testing of the full graph topology without configuring external services
 - Each node checks for API key availability and falls back gracefully
 - M2 will replace mocks with real API calls without changing the graph structure
+
+### 11. QWeather Authentication: JWT, not Private Key in `.env`
+
+**Decision**: QWeather requests use `Authorization: Bearer <JWT>`. `WEATHER_API_KEY` must contain a signed JWT or a short API key, not an Ed25519 private key.
+
+**Rationale**:
+- QWeather's current API authenticates via JWT signed with Ed25519, or via an API key header
+- A private key is only used to sign a JWT; pasting it directly into `.env` produces a `401 Unauthorized`
+- The developer-specific API Host is stored in `QWEATHER_BASE_URL`, so the code can build GeoAPI and weather URLs correctly
+
+### 12. QWeather Current API Shape
+
+**Decision**: Use QWeather's current endpoint layout instead of the legacy `?key=` endpoints.
+
+**Rationale**:
+- City lookup: `GET {QWEATHER_BASE_URL}/geo/v2/city/lookup?location=...`
+- Daily forecast: `GET {QWEATHER_BASE_URL}/weather/v1/daily/{latitude}/{longitude}`
+- Legacy `geoapi.qweather.com` and `devapi.qweather.com/v7` endpoints return 404/403 for current credentials
