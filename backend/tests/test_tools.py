@@ -4,6 +4,7 @@ import json
 import pytest
 from unittest.mock import patch, MagicMock
 
+from config.settings import settings
 from tools.weather_tool import (
     weather_tool_sync,
     _parse_qweather_daily,
@@ -21,13 +22,6 @@ from tools.maps_tool import maps_tool
 
 class TestWeatherToolSync:
     """weather_tool_sync returns a dict directly (no JSON wrapper)."""
-
-    @pytest.fixture(autouse=True)
-    def _disable_real_weather(self):
-        """Force real-weather fetchers to fail so tests stay deterministic."""
-        with patch("tools.weather_tool._fetch_qweather_sync", side_effect=RuntimeError("offline")), \
-             patch("tools.weather_tool._fetch_openweathermap_sync", side_effect=RuntimeError("offline")):
-            yield
 
     def test_returns_dict_with_date_keys(self):
         result = weather_tool_sync("合肥", "2026-09-01", "2026-09-03")
@@ -102,9 +96,12 @@ class TestQWeather:
         assert _forecast_days("2026-09-01", "2026-09-30") == 10
 
     def test_qweather_headers_uses_bearer_token(self):
-        with patch("tools.weather_tool.settings") as mock_settings:
-            mock_settings.weather_api_key = "test-jwt"
+        with patch(
+            "tools.weather_tool.build_qweather_headers",
+            return_value={"Authorization": "Bearer test-jwt"},
+        ) as mock_headers:
             assert _qweather_headers() == {"Authorization": "Bearer test-jwt"}
+            mock_headers.assert_called_once_with(settings)
 
     def test_parse_qweather_daily_basic(self):
         daily = [

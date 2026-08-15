@@ -14,6 +14,7 @@ import httpx
 from langchain_core.tools import tool
 
 from config.settings import settings
+from services.qweather_auth import build_qweather_headers
 
 # ── Mock weather patterns per city (seasonal) ─────────────────────
 
@@ -280,8 +281,8 @@ def _parse_qweather_v1_daily(days: list, start: str, end: str) -> dict:
 
 
 def _qweather_headers() -> dict:
-    """Build QWeather JWT authentication headers."""
-    return {"Authorization": f"Bearer {settings.weather_api_key}"}
+    """Build QWeather authentication headers for JWT or API Key."""
+    return build_qweather_headers(settings)
 
 
 def _forecast_days(start: str, end: str) -> int:

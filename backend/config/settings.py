@@ -6,6 +6,16 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_int(name: str, default: int) -> int:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
+
+
 class Settings:
     """Centralized app settings."""
 
@@ -35,6 +45,12 @@ class Settings:
     weather_api_key: str = os.getenv("WEATHER_API_KEY", "")
     weather_provider: str = os.getenv("WEATHER_PROVIDER", "qweather")
     qweather_base_url: str = os.getenv("QWEATHER_BASE_URL", "https://devapi.qweather.com")
+    qweather_auth_mode: str = os.getenv("QWEATHER_AUTH_MODE", "auto")
+    qweather_credential_id: str = os.getenv("QWEATHER_CREDENTIAL_ID", "")
+    qweather_project_id: str = os.getenv("QWEATHER_PROJECT_ID", "")
+    qweather_private_key: str = os.getenv("QWEATHER_PRIVATE_KEY", "")
+    qweather_private_key_path: str = os.getenv("QWEATHER_PRIVATE_KEY_PATH", "")
+    qweather_jwt_ttl_seconds: int = _env_int("QWEATHER_JWT_TTL_SECONDS", 900)
 
     # Maps
     maps_api_key: str = os.getenv("MAPS_API_KEY", "")

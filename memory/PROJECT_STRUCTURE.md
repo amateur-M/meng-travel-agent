@@ -19,6 +19,10 @@ meng-travel-agent/
 │   ├── config/                      # 配置模块
 │   │   ├── __init__.py              # 导出 Settings
 │   │   └── settings.py             # 集中配置类（env → Python）
+│   ├── services/                    # 业务服务层（M2 新增）
+│   │   ├── __init__.py
+│   │   ├── llm.py                   # LLM 统一调用入口 + mock fallback
+│   │   └── qweather_auth.py         # QWeather JWT/API Key 鉴权
 │   ├── agents/                      # LangGraph Agent 引擎
 │   │   ├── __init__.py
 │   │   ├── state.py                 # AgentState TypedDict 定义
@@ -51,12 +55,17 @@ meng-travel-agent/
 │   │   └── __init__.py              # API 请求/响应 schema
 │   └── tests/                       # 后端测试
 │       ├── __init__.py
+│       ├── conftest.py              # 外部 API 隔离 + opt-in 真实测试开关
 │       ├── test_state.py
 │       ├── test_schemas.py
 │       ├── test_prompts.py
 │       ├── test_nodes_input.py
 │       ├── test_nodes_core.py
 │       ├── test_nodes_output.py
+│       ├── test_tools.py
+│       ├── test_services.py
+│       ├── test_qweather_auth.py
+│       ├── test_qweather_external_api.py
 │       └── test_graph.py
 │
 ├── frontend/                        # React 前端
@@ -110,3 +119,11 @@ meng-travel-agent/
 | `prompts/couple_copy_prompt.md` | ~60 | 按活动类型的语气指引, 避免俗套句式, 8-25 字限制 |
 | `prompts/weather_adapt_prompt.md` | ~70 | 4 条调整规则（雨/高温/低温/大风）, swaps + time_shifts |
 | `prompts/budget_downgrade_prompt.md` | ~80 | 4 级降级策略, impact 分级, 不可降级项列表 |
+
+## QWeather 鉴权新增文件 (2026-08-15)
+
+| 文件 | 说明 |
+|------|------|
+| `services/qweather_auth.py` | Ed25519 JWT 生成、PEM/JWT/API Key 自动识别、请求头构建 |
+| `tests/test_qweather_auth.py` | 鉴权单测：JWT 结构、签名验证、API Key、错误分支 |
+| `tests/test_qweather_external_api.py` | 可选的真实 QWeather API 冒烟测试，`QWX_TEST_REAL_API=1` 启用 |

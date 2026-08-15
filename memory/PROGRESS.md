@@ -93,9 +93,18 @@
 - [x] Added QWeather v1 daily response parser + focused tests
 - [x] Qwen real LLM smoke test passed
 
+### QWeather Real Auth (2026-08-15)
+- [x] Added `services/qweather_auth.py` with JWT generation using Ed25519 private keys
+- [x] Added auto-detection for PEM private key, signed JWT, and API key
+- [x] Added `QWEATHER_AUTH_MODE`, `QWEATHER_CREDENTIAL_ID`, `QWEATHER_PROJECT_ID`, private-key path, and TTL settings
+- [x] Added `cryptography` dependency
+- [x] Added opt-in real API test: `QWX_TEST_REAL_API=1`
+- [x] Removed deliberate `RuntimeError` patches from weather test fixtures
+- [x] Full test result: 146 passed + 1 skipped
+
 ### Remaining
-- [ ] Finish QWeather authentication: `.env` currently contains a private key, not a JWT/API key
-- [ ] Re-run real QWeather smoke test after valid JWT or API key is configured
+- [ ] Add `QWEATHER_CREDENTIAL_ID` and `QWEATHER_PROJECT_ID` to `backend/.env`
+- [ ] Run real QWeather smoke test with `QWX_TEST_REAL_API=1`
 - [ ] vcrpy cassette tests for external API calls
 
 ## Verification
@@ -103,5 +112,6 @@
 - npm install succeeded: 166 packages
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
-- Backend M2 tools + services + node wiring + multi-provider tested (138/138)
-- Qwen real LLM call returns valid JSON; QWeather real call blocked by authentication config
+- Backend M2 tools + services + node wiring + multi-provider tested
+- QWeather auth layer tested; real QWeather call still needs credential/project IDs
+- Latest test result: 146 passed + 1 skipped

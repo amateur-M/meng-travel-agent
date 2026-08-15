@@ -1,7 +1,15 @@
 """Shared pytest fixtures."""
 
+import os
+
 import pytest
-from unittest.mock import patch
+
+
+RUN_QWEATHER_API_TESTS = os.getenv("QWX_TEST_REAL_API", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 @pytest.fixture(autouse=True)
@@ -11,15 +19,7 @@ def _disable_external_apis(monkeypatch):
     monkeypatch.setattr("config.settings.settings.deepseek_api_key", "")
     monkeypatch.setattr("config.settings.settings.qwen_api_key", "")
     monkeypatch.setattr("config.settings.settings.kimi_api_key", "")
-    monkeypatch.setattr("config.settings.settings.weather_api_key", "")
+    if not RUN_QWEATHER_API_TESTS:
+        monkeypatch.setattr("config.settings.settings.weather_api_key", "")
     monkeypatch.setattr("config.settings.settings.maps_api_key", "")
-
-    # Extra guard: make any accidental weather fetch fail immediately.
-    with patch(
-        "tools.weather_tool._fetch_qweather_sync",
-        side_effect=RuntimeError("network disabled in tests"),
-    ), patch(
-        "tools.weather_tool._fetch_openweathermap_sync",
-        side_effect=RuntimeError("network disabled in tests"),
-    ):
-        yield
+    yield

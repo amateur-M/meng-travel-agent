@@ -98,14 +98,15 @@
 - Each node checks for API key availability and falls back gracefully
 - M2 will replace mocks with real API calls without changing the graph structure
 
-### 11. QWeather Authentication: JWT, not Private Key in `.env`
+### 11. QWeather Authentication: Auto-detect PEM / JWT / API Key
 
-**Decision**: QWeather requests use `Authorization: Bearer <JWT>`. `WEATHER_API_KEY` must contain a signed JWT or a short API key, not an Ed25519 private key.
+**Decision**: `services/qweather_auth.py` generates QWeather-compatible Ed25519 JWTs when `WEATHER_API_KEY` contains a PEM private key, passes through already-signed JWTs, and sends short values as `X-QW-Api-Key`.
 
 **Rationale**:
 - QWeather's current API authenticates via JWT signed with Ed25519, or via an API key header
-- A private key is only used to sign a JWT; pasting it directly into `.env` produces a `401 Unauthorized`
-- The developer-specific API Host is stored in `QWEATHER_BASE_URL`, so the code can build GeoAPI and weather URLs correctly
+- The existing `.env` contained a private key rather than a signed JWT, so the old Bearer request was guaranteed to fail
+- Keeping auto-detection avoids breaking either JWT or API Key deployments
+- `QWEATHER_CREDENTIAL_ID` and `QWEATHER_PROJECT_ID` are required only when generating a JWT
 
 ### 12. QWeather Current API Shape
 
@@ -115,3 +116,12 @@
 - City lookup: `GET {QWEATHER_BASE_URL}/geo/v2/city/lookup?location=...`
 - Daily forecast: `GET {QWEATHER_BASE_URL}/weather/v1/daily/{latitude}/{longitude}`
 - Legacy `geoapi.qweather.com` and `devapi.qweather.com/v7` endpoints return 404/403 for current credentials
+
+### 13. Real External API Tests Are Opt-in
+
+**Decision**: Unit tests do not patch weather fetchers with forced `RuntimeError`; external weather credentials are disabled by default, and real QWeather calls run only when `QWX_TEST_REAL_API=1`.
+
+**Rationale**:
+- Keeps the default test suite fast and deterministic
+- Allows the same tests to exercise real QWeather when the operator explicitly opts in
+- The opt-in smoke test calls `_fetch_qweather_sync` directly, bypassing mock fallback

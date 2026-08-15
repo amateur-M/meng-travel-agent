@@ -4,10 +4,10 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M2 核心完成（Tools + Prompt 模板 + LLM 服务层 + Node 接入 + QWeather JWT 迁移 + 138 测试全通过）。
+**当前阶段**：M2 核心完成，QWeather 真实鉴权逻辑已实现（JWT 自动签名 / API Key / 直传 JWT），测试 146 passed + 1 skipped。
 
 **下一步行动**：
-1. 完成 QWeather JWT/API Key 配置并跑通真实天气冒烟测试
+1. 在 `backend/.env` 补充 `QWEATHER_CREDENTIAL_ID` 与 `QWEATHER_PROJECT_ID`，运行真实天气冒烟测试
 2. 补充 vcrpy 外部 API cassette 测试
 3. 启动 M3：前端基础 UI（TripForm + ItineraryCard）
 
@@ -53,10 +53,10 @@
 | Node → Tool 接入 | ✅ | fetch_weather/search_poi/search_food 全部接入 |
 | LLM 服务层 | ✅ | services/llm.py — call_llm() 统一入口 + mock fallback |
 | Node → LLM 接入 | ✅ | plan_itinerary/budget_check/adapt_weather/add_couple_touch 全部接入 |
-| QWeather JWT 迁移 | ✅ | GeoAPI + `/weather/v1/daily/{lat}/{lon}` + JWT Bearer |
+| QWeather 鉴权 | ✅ | JWT 自动签名 / API Key / 直传 JWT，兼容 GeoAPI + Weather v1 |
 | `plan_itinerary._build_prompt()` | ✅ | 修复模板替换并返回完整 prompt |
-| 测试 | ✅ | 138/138 (含 tools + services + multi-provider LLM + QWeather parser) |
-| 真实 API 验证 | ⏳ | Qwen 已通过；QWeather 待替换为有效 JWT/API Key |
+| 测试 | ✅ | 146 passed + 1 skipped（新增 QWeather 鉴权单测与外部 API 冒烟测试） |
+| 真实 API 验证 | ⏳ | Qwen 已通过；QWeather 待补 `QWEATHER_CREDENTIAL_ID` / `QWEATHER_PROJECT_ID` |
 
 ---
 
@@ -68,7 +68,7 @@
 | DeepSeek | LLM 推理（可选 provider） | `DEEPSEEK_API_KEY` |
 | Qwen（通义千问） | LLM 推理（可选 provider） | `QWEN_API_KEY` |
 | Kimi（月之暗面） | LLM 推理（可选 provider） | `KIMI_API_KEY` |
-| QWeather / 和风天气 | 天气预报 | `WEATHER_API_KEY`（JWT 或 API Key） + `QWEATHER_BASE_URL` |
+| QWeather / 和风天气 | 天气预报 | `WEATHER_API_KEY`（PEM 私钥 / JWT / API Key） + `QWEATHER_BASE_URL` + `QWEATHER_CREDENTIAL_ID` + `QWEATHER_PROJECT_ID` |
 | 高德地图 / Google Maps | POI 搜索、地理编码 | `MAP_API_KEY` |
 
 密钥统一管理在 `backend/.env`（不提交），模板见 `.env.example`。
