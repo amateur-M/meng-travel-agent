@@ -87,12 +87,19 @@ meng-travel-agent/
 │       ├── App.tsx                  # 根组件（React Router 路由）
 │       ├── index.css                # Tailwind 指令
 │       ├── vite-env.d.ts            # Vite 类型声明
-│       ├── components/              # UI 组件（M3 填充）
-│       ├── pages/                   # 页面级组件
+│       ├── components/
+│       │   ├── TripForm.tsx         # 行程输入表单
+│       │   ├── ItineraryCard.tsx    # 每日行程卡片
+│       │   ├── ActivityItem.tsx     # 单项活动
+│       │   └── BudgetBar.tsx        # 预算进度条
+│       ├── pages/
+│       │   └── Home.tsx             # 首页（表单 + 行程展示）
 │       ├── hooks/                   # 自定义 hooks（M6 SSE 等）
-│       ├── services/                # API 调用封装（axios）
+│       ├── services/
+│       │   └── plan.ts              # POST /api/plan + SSE 解析
 │       ├── stores/                  # Zustand 状态管理
-│       └── types/                   # TypeScript 类型定义
+│       └── types/
+│           └── trip.ts              # 前端行程类型定义
 │
 ├── docker-compose.yml               # Docker 编排
 ├── .gitignore                       # Git 忽略规则
@@ -139,3 +146,15 @@ meng-travel-agent/
 | `tests/test_qweather_cassettes.py` | 离线重放 QWeather GeoAPI / daily forecast HTTP 交互 |
 | `tests/cassettes/qweather_city_lookup.yaml` | 城市坐标查询 cassette |
 | `tests/cassettes/qweather_daily_forecast.yaml` | 城市查询 + daily forecast cassette |
+
+## M3 前端基础 UI 新增文件 (2026-08-16)
+
+| 文件 | 说明 |
+|------|------|
+| `frontend/src/types/trip.ts` | `TripPlanRequest` / `TripPlanResponse` 等 TypeScript 类型 |
+| `frontend/src/services/plan.ts` | `POST /api/plan` 调用与 SSE 事件解析 |
+| `frontend/src/components/TripForm.tsx` | 日期、地点、预算、偏好、节奏表单 |
+| `frontend/src/components/ItineraryCard.tsx` | 按上午/下午/晚间分组的每日行程卡片 |
+| `frontend/src/components/ActivityItem.tsx` | 活动类型、时间、地点、花费、情侣寄语 |
+| `frontend/src/components/BudgetBar.tsx` | 预算使用进度条 |
+| `frontend/src/pages/Home.tsx` | M3 首页，组合表单和行程结果 |

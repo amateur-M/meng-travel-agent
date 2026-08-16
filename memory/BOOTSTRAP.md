@@ -4,11 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M2 完成，QWeather 真实 API 已验证（JWT 自动签名 / API Key / 直传 JWT），测试 148 passed + 1 skipped；真实 QWeather 冒烟测试 1 passed。
+**当前阶段**：M3 完成，前端基础 UI 已实现（TripForm / ItineraryCard / ActivityItem / BudgetBar + SSE API 层）；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
 
 **下一步行动**：
-1. 启动 M3：前端基础 UI（TripForm + ItineraryCard）
-2. 完成前后端联调后进入 M4（预算透明与天气自适应）
+1. 进入 M4：预算透明与天气自适应
+2. 完成 M4 后进入 M5：节奏控制与情侣向体验
 
 ---
 
