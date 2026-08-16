@@ -4,7 +4,7 @@
 |-----------|--------|------------|----------|-------|
 | M0 | Done | 2026-08-10 | 2026-08-10 | Project scaffold complete |
 | M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
-| M2 | In Progress | 2026-08-11 | — | External API + LLM integration |
+| M2 | Done | 2026-08-11 | 2026-08-16 | External API + LLM integration |
 | M3 | Pending | — | — | Frontend basic UI |
 | M4 | Pending | — | — | Budget + weather |
 | M5 | Pending | — | — | Rhythm + couple messages |
@@ -102,10 +102,13 @@
 - [x] Removed deliberate `RuntimeError` patches from weather test fixtures
 - [x] Full test result: 146 passed + 1 skipped
 
-### Remaining
-- [ ] Add `QWEATHER_CREDENTIAL_ID` and `QWEATHER_PROJECT_ID` to `backend/.env`
-- [ ] Run real QWeather smoke test with `QWX_TEST_REAL_API=1`
-- [ ] vcrpy cassette tests for external API calls
+### M2 Finalization (done 2026-08-16)
+- [x] Added `QWEATHER_CREDENTIAL_ID` and `QWEATHER_PROJECT_ID` to `backend/.env`
+- [x] Ran real QWeather smoke test with `QWX_TEST_REAL_API=1`
+- [x] Added `tests/test_qweather_cassettes.py` with offline vcrpy cassette tests
+- [x] Recorded cassettes for QWeather city lookup and daily forecast
+- [x] Full offline suite: 148 passed + 1 skipped
+- [x] Real QWeather smoke test: 1 passed
 
 ## Verification
 
@@ -113,5 +116,7 @@
 - Frontend scaffold ready for M3 UI development
 - Backend M1 agent engine fully tested (96/96)
 - Backend M2 tools + services + node wiring + multi-provider tested
-- QWeather auth layer tested; real QWeather call still needs credential/project IDs
-- Latest test result: 146 passed + 1 skipped
+- QWeather auth layer tested; real QWeather call verified with credentials
+- vcrpy cassette tests replay external API calls without network access
+- Latest offline test result: 148 passed + 1 skipped
+- Latest real QWeather smoke test: 1 passed

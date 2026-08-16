@@ -1,0 +1,106 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      authorization:
+      - DUMMY
+      connection:
+      - keep-alive
+      host:
+      - kb3fc38v6c.re.qweatherapi.com
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://kb3fc38v6c.re.qweatherapi.com/geo/v2/city/lookup?location=%E5%8C%97%E4%BA%AC&range=cn&number=5&lang=zh
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/9WUz0vDMBTH/xXJ1a1Nk7auvQkeBREPHsRDzLI1uiWzSZ11DIY3waOgoCLe9SSi
+        DvxvtoH/hWkdZZ1edpv08r7flx/vfXhpD1BZZyAECEJQAS1JieZSgHCvBwRpZ5nx5fVo+GSSvG6U
+        A3++fDXRxsGBFUA3CPLtIlvi+JYLPZQ5pN5Gs2cY7RR6/H5uLCoToePUuKP35/Htp7H0mVHrihN7
+        JyKiGRFuzETTrUZDsezOVVgL8xK42lCZkcU67WT1Uq5To2IijvJ6Tdw43eS5irTuqNC2u92uddxl
+        REcstqhs29PYPmD8kItmtWjTinS7BfqVAsfk9W3yNijjQHM4PB+ulXBgB2K0FDi8hXCYq+qciGrR
+        5m8cd/dfNy9lHHgOB3Lcuemo+a7zD3HQiMiUFOOB/+Dx9TgcfVyUebgzPFxoOagWuCUevoc9vAw8
+        MF6Ih4oSkfJq0eXv6RgMJg9XZRpemQZGLio/Fh+vOUvxWBakESWExzKpFm1OceybA1mDxSDsASWT
+        mDJl/q9ge/dnHzD5FqdMKDZrr2ywE9aSHRarlc1per/f/waivJC+sQUAAA==
+    headers:
+      access-control-allow-headers:
+      - '*'
+      access-control-allow-methods:
+      - '*'
+      access-control-allow-origin:
+      - '*'
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-length:
+      - '442'
+      content-type:
+      - application/json
+      date:
+      - Sun, 16 Aug 2026 14:34:46 GMT
+    status:
+      code: 200
+      message: ''
+- request:
+    body: ''
+    headers:
+      accept:
+      - '*/*'
+      accept-encoding:
+      - gzip, deflate, zstd
+      authorization:
+      - DUMMY
+      connection:
+      - keep-alive
+      host:
+      - kb3fc38v6c.re.qweatherapi.com
+      user-agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://kb3fc38v6c.re.qweatherapi.com/weather/v1/daily/39.90499/116.40529?days=2&localTime=true&lang=zh
+  response:
+    body:
+      string: !!binary |
+        H4sIAAAAAAAA/72Wz27bNhzH30XXOgz/iaR0G7ph6KHFgGWnoQdapG1iFuVJlJMg8EP0NGznPUAP
+        Pe24Z1kH9C1KMUsiUbZsd8suhg19SP3IL/n7+C4ptZNKOpnkd4mTyyRPdMYknnPKKCkyQQlVDENJ
+        MNIMFSx8K5hSUiJYMKap4GIxTzMGF0SIhSLJLJHO1WbeOlPZJsl/TFbObZr88lLprV5XG12Dn6+1
+        dCv/pajKyx4OVq5cJ293s0TJ227sXbKoal3Ixn3vZO2uTKl9jRhidgHFBWJXEOYQvoDCf/o3P8Df
+        WBWjPEI9VVfdspvW1qaJp01zzB9ZjzTaDQmU5QgPZ7NVaQq5/lpe22g2klP2yFrp17qfozkmj1xh
+        tmY/lIr9L26bn4YshnlKxi/exyEWvXgE+RVT9LQn1VrWb6oqqg7hHMMh9Nooa5YrNwquB5Z+oj0p
+        +D0eMqMYhivskKta2sbEaaU5HGI/WKXrRVW56JCQGPxuJUNd1/LG2OVFUeum0NYl/pA6XfrTLF1b
+        69fypjtMW7luPYw5ILOktaGMP9+/jGFj+zABGE/QX22XfZoCQWO63b7yy7kJRdBweVw4/sevDz/x
+        +oT4e2hRWWW6Kxs6h77pivn4/t1ff7wLD1U3GEHsf5ginJHux3+3ZQykWUxfG6s6Rhm/iofSlF7W
+        2o/gtCur3Mim6Zqc1d2IZqO16k2LAGKPs5aXTWD8heke/fOCb9vGDQungKXxoI2vwGyMkw9lyLJq
+        /Zl5GgWfhpT3I6q5nJu1cbfhobvddFtoq/tKi3XVqpfVVtf+KUBolqza0qh7GqTCI+GOnRj7MMvp
+        rsmPxf73rx/6mcNe5imczjwFlJ0eOgJcnBU6SdN+6nZf5hCI7OzMMUj/78xhlLkgu93sSNCx8yaC
+        FmfokQc9igk98qBHdJIeQ8+l/KgeedBjOq3HUFq8jAN65EEe+KgeA4fotB7Diimc1iM/VY/8BD36
+        yQbW3qNHXznKUXpMj7zTYy+Bg3oUUVRfqkeCQIr+3b0/7EevhlFP6fuRn+7HuPtNNspn9uOZe0YA
+        G+l0sldiNGiVhwSZ4QPNEh9slr7JjzrscwsyiwSZnSXIOMzpvnmKID/98uHj779F6ZO+Kcm0KQVg
+        oz88k+mPzspk+ojhfvxNcyB+SM92JQFk9KfqmeOnZBg/z3a7t7vPOHLBq+4OAAA=
+    headers:
+      access-control-allow-headers:
+      - '*'
+      access-control-allow-methods:
+      - '*'
+      access-control-allow-origin:
+      - '*'
+      connection:
+      - keep-alive
+      content-encoding:
+      - gzip
+      content-length:
+      - '902'
+      content-type:
+      - application/json
+      date:
+      - Sun, 16 Aug 2026 14:34:46 GMT
+    status:
+      code: 200
+      message: ''
+version: 1

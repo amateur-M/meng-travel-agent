@@ -4,12 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M2 核心完成，QWeather 真实鉴权逻辑已实现（JWT 自动签名 / API Key / 直传 JWT），测试 146 passed + 1 skipped。
+**当前阶段**：M2 完成，QWeather 真实 API 已验证（JWT 自动签名 / API Key / 直传 JWT），测试 148 passed + 1 skipped；真实 QWeather 冒烟测试 1 passed。
 
 **下一步行动**：
-1. 在 `backend/.env` 补充 `QWEATHER_CREDENTIAL_ID` 与 `QWEATHER_PROJECT_ID`，运行真实天气冒烟测试
-2. 补充 vcrpy 外部 API cassette 测试
-3. 启动 M3：前端基础 UI（TripForm + ItineraryCard）
+1. 启动 M3：前端基础 UI（TripForm + ItineraryCard）
+2. 完成前后端联调后进入 M4（预算透明与天气自适应）
 
 ---
 
@@ -55,8 +54,8 @@
 | Node → LLM 接入 | ✅ | plan_itinerary/budget_check/adapt_weather/add_couple_touch 全部接入 |
 | QWeather 鉴权 | ✅ | JWT 自动签名 / API Key / 直传 JWT，兼容 GeoAPI + Weather v1 |
 | `plan_itinerary._build_prompt()` | ✅ | 修复模板替换并返回完整 prompt |
-| 测试 | ✅ | 146 passed + 1 skipped（新增 QWeather 鉴权单测与外部 API 冒烟测试） |
-| 真实 API 验证 | ⏳ | Qwen 已通过；QWeather 待补 `QWEATHER_CREDENTIAL_ID` / `QWEATHER_PROJECT_ID` |
+| 测试 | ✅ | 148 passed + 1 skipped（新增 QWeather 鉴权单测、真实 API 冒烟测试与 vcrpy cassette 测试） |
+| 真实 API 验证 | ✅ | Qwen 已通过；QWeather GeoAPI 与 daily forecast 已通过，并录制 vcrpy cassette |
 
 ---
 

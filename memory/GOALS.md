@@ -1,34 +1,24 @@
 ## Current Iteration Goals
 
-**Current Milestone**: M1 — Backend Core Agent Engine
+**Current Milestone**: M3 — Frontend Basic UI
 
-**Objective**: Implement the full LangGraph travel planning pipeline that produces structured itinerary JSON from input parameters.
+**Objective**: Implement the trip input form and itinerary card display, then connect them to the existing `POST /api/plan` SSE endpoint.
 
 ### Tasks for This Iteration
 
-1. Implement all 8 Nodes:
-   - gather_input — parse and validate user input
-   - fetch_weather — query weather (mock data for M1)
-   - search_pois — search attractions/restaurants (mock data for M1)
-   - generate_itinerary — LLM-powered initial itinerary generation
-   - apply_budget — budget calculation and downgrade logic
-   - weather_adapt — weather-condition based adjustments
-   - add_couple_messages — generate couple messages per activity
-   - finalize_plan — final validation and output
-
-2. Write LLM prompt templates
-
-3. Define Pydantic data models (TripPlan, DayPlan, Activity, BudgetSummary)
-
-4. Write test_agent.py unit tests
+1. Define TypeScript types matching the backend `TripPlanRequest` and `TripPlanResponse`.
+2. Build `TripForm` with origin, destination, dates, budget, preferences, and pace inputs.
+3. Build `ItineraryCard`, `ActivityItem`, and `BudgetBar` components.
+4. Add a frontend API layer that calls `POST /api/plan` and consumes the SSE `complete` event.
+5. Apply responsive Tailwind layout for mobile single-column and desktop two-column.
 
 ### Acceptance Criteria
 
-- Input: { destination: "Dali", start_date: "2026-09-01", end_date: "2026-09-03", budget: 5000, preferences: ["romantic", "food"] }
-- Output: structured TripPlan JSON with morning/afternoon/evening activities, estimated costs, and couple messages per day
-- All unit tests pass
+- Submitting `TripForm` successfully calls `POST /api/plan`.
+- The returned itinerary is displayed as time-axis cards with date, weather, activities, estimated cost, and couple note.
+- `BudgetBar` reflects total spent versus total budget.
+- Mobile layout uses one column and desktop uses two columns.
 
 ### Blockers
 
 None
-

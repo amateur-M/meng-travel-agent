@@ -66,6 +66,10 @@ meng-travel-agent/
 │       ├── test_services.py
 │       ├── test_qweather_auth.py
 │       ├── test_qweather_external_api.py
+│       ├── test_qweather_cassettes.py
+│       ├── cassettes/
+│       │   ├── qweather_city_lookup.yaml
+│       │   └── qweather_daily_forecast.yaml
 │       └── test_graph.py
 │
 ├── frontend/                        # React 前端
@@ -127,3 +131,11 @@ meng-travel-agent/
 | `services/qweather_auth.py` | Ed25519 JWT 生成、PEM/JWT/API Key 自动识别、请求头构建 |
 | `tests/test_qweather_auth.py` | 鉴权单测：JWT 结构、签名验证、API Key、错误分支 |
 | `tests/test_qweather_external_api.py` | 可选的真实 QWeather API 冒烟测试，`QWX_TEST_REAL_API=1` 启用 |
+
+## QWeather vcrpy 测试新增文件 (2026-08-16)
+
+| 文件 | 说明 |
+|------|------|
+| `tests/test_qweather_cassettes.py` | 离线重放 QWeather GeoAPI / daily forecast HTTP 交互 |
+| `tests/cassettes/qweather_city_lookup.yaml` | 城市坐标查询 cassette |
+| `tests/cassettes/qweather_daily_forecast.yaml` | 城市查询 + daily forecast cassette |
