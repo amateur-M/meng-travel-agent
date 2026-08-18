@@ -40,7 +40,7 @@ def parse_input(state: AgentState) -> Dict[str, Any]:
     try:
         sd = date.fromisoformat(str(parsed["start_date"]))
         ed = date.fromisoformat(str(parsed["end_date"]))
-        parsed["num_days"] = max(1, (ed - sd).days)
+        parsed["num_days"] = max(1, (ed - sd).days + 1)
     except (ValueError, TypeError):
         pass  # keep default; downstream nodes will handle missing dates
 

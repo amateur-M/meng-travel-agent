@@ -12,12 +12,12 @@ from agents.nodes.add_couple_touch import add_couple_touch
 from agents.nodes.output_format import output_format
 
 
-def _full_state(destination="Dali", days=2):
+def _full_state(destination="Dali", days=3):
     user = {
         "origin": "Beijing",
         "destination": destination,
         "start_date": "2026-09-01",
-        "end_date": f"2026-09-0{days+1}",
+        "end_date": f"2026-09-{days:02d}",
         "budget": 5000,
         "preferences": ["romantic", "food"],
         "pace": "relaxed",

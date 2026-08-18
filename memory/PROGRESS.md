@@ -130,6 +130,7 @@
 - [x] Built `SSEProgress` for Agent step visualization
 - [x] Built `Home`, `PlanResult`, and `Loading` pages with React Router routes
 - [x] Applied warm pink, cream, and gold visual system with mobile-first responsive layout
+- [x] Fixed backend inclusive date-range bug in `parse_input` and updated affected tests
 
 ## Verification
 
@@ -145,3 +146,4 @@
 - Frontend M3 Vite production build passed
 - Frontend dev server verified on `http://127.0.0.1:5173` with HTTP 200
 - Backend `POST /api/plan` integration verified through Vite proxy and returns SSE `complete`
+- Backend 3-day request verified to return 3 itinerary days after date-range fix

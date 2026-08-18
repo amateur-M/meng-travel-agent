@@ -41,7 +41,7 @@ class TestParseInput:
         assert p["budget"] == 5000
         assert p["preferences"] == ["romantic", "food"]
         assert p["pace"] == "relaxed"
-        assert p["num_days"] == 2
+        assert p["num_days"] == 3
         assert result["current_phase"] == "parse_input"
         assert result["retry_count"] == 0
         assert result["error"] == ""
@@ -80,7 +80,8 @@ class TestFetchWeather:
         w = result["weather_data"]
         assert "2026-09-01" in w
         assert "2026-09-02" in w
-        assert len(w) == 2
+        assert "2026-09-03" in w
+        assert len(w) == 3
         assert result["current_phase"] == "fetch_weather"
 
     def test_weather_has_required_keys(self):

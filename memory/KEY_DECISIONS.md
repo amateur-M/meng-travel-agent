@@ -125,3 +125,12 @@
 - Keeps the default test suite fast and deterministic
 - Allows the same tests to exercise real QWeather when the operator explicitly opts in
 - The opt-in smoke test calls `_fetch_qweather_sync` directly, bypassing mock fallback
+
+### 14. Travel Date Range Is Inclusive
+
+**Decision**: `parse_input` computes `num_days` as `(end_date - start_date).days + 1`.
+
+**Rationale**:
+- Users naturally expect a trip from 2026-09-01 to 2026-09-03 to contain three travel days
+- Downstream nodes already consume `num_days` as an inclusive day count when generating weather and itinerary
+- The prior exclusive calculation silently dropped the return date from multi-day plans

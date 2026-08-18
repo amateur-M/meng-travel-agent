@@ -12,13 +12,13 @@ from agents.nodes.budget_check import budget_check, _sum_costs, _daily_costs
 from agents.nodes.adapt_weather import adapt_weather, _find_indoor_replacement
 
 
-def _full_input_state(destination="Dali", budget=5000, days=2, preferences=None):
+def _full_input_state(destination="Dali", budget=5000, days=3, preferences=None):
     """Build a state that has already gone through parse_input + fetchers."""
     user = {
         "origin": "Beijing",
         "destination": destination,
         "start_date": "2026-09-01",
-        "end_date": f"2026-09-0{days+1}",
+        "end_date": f"2026-09-{days:02d}",
         "budget": budget,
         "preferences": preferences or ["romantic", "food"],
         "pace": "relaxed",
@@ -36,7 +36,7 @@ class TestPlanItinerary:
     def test_mock_itinerary_has_correct_day_count(self):
         state = _full_input_state()
         draft = _mock_itinerary(state)
-        assert len(draft["days"]) == 2
+        assert len(draft["days"]) == 3
 
     def test_mock_itinerary_each_day_has_activities(self):
         state = _full_input_state()

@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M3 完成，前端核心 UI 已按页面/组件分层重构（Home / PlanResult / Loading、TripForm / Timeline / TimelineCard / BudgetBar / WeatherBadge / CoupleQuote / SSEProgress、Zustand stores 与 api/sse 服务层）；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
+**当前阶段**：M3 完成，前端核心 UI 已按页面/组件分层重构，并已接入后端真实 `POST /api/plan` SSE 流；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
 
 **下一步行动**：
 1. 进入 M4：预算透明与天气自适应
@@ -68,6 +68,7 @@
 | 状态管理 | ✅ | Zustand `tripStore`（表单/结果/预算）+ `uiStore`（主题/动画） |
 | API 层 | ✅ | `api.ts` Axios + `sse.ts` SSE 连接管理 + `plan.ts` POST /api/plan 真实流式解析 |
 | Mock 数据 | ✅ | `mocks/trip.ts` 保留为离线预览，正式规划已由后端真实数据取代 |
+| 后端联调 | ✅ | 修复 `parse_input` 未包含结束日的天数计算，3 天请求现返回 3 天行程 |
 | 视觉与动效 | ✅ | 暖粉/奶白/淡金、圆角软阴影、Framer Motion stagger、移动端优先 |
 | 验证 | ✅ | TypeScript 类型检查与 Vite 生产构建通过 |
 

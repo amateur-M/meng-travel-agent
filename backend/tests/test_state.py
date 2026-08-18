@@ -43,7 +43,7 @@ class TestAgentStateTypedDict:
                 "preferences": ["浪漫", "自然"],
                 "pace": "轻松",
             },
-            "parsed_params": {"destination": "大理", "num_days": 2},
+            "parsed_params": {"destination": "大理", "num_days": 3},
             "weather_data": {
                 "2026-09-01": {"condition": "晴", "high": 26, "low": 16},
                 "2026-09-02": {"condition": "多云", "high": 27, "low": 17},

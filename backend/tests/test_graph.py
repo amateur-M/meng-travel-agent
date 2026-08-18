@@ -56,13 +56,13 @@ class TestGraphBuild:
 class TestGraphInvoke:
     """End-to-end graph execution with mock data (no API keys)."""
 
-    def _initial_state(self, destination="Dali", budget=5000, days=2, pace="relaxed"):
+    def _initial_state(self, destination="Dali", budget=5000, days=3, pace="relaxed"):
         return {
             "user_input": {
                 "origin": "Beijing",
                 "destination": destination,
                 "start_date": "2026-09-01",
-                "end_date": f"2026-09-0{days+1}",
+                "end_date": f"2026-09-{days:02d}",
                 "budget": budget,
                 "preferences": ["romantic", "food"],
                 "pace": pace,
@@ -79,7 +79,7 @@ class TestGraphInvoke:
         final = result.get("final_itinerary", {})
         assert "plan_id" in final
         assert final["status"] == "completed"
-        assert len(final["days"]) == 2
+        assert len(final["days"]) == 3
 
     def test_full_graph_completes_lijiang(self):
         """Smoke test: graph completes for Lijiang."""
