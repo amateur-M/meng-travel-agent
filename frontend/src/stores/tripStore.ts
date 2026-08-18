@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createMockPlan } from "../mocks/trip";
+import { createPlan } from "../services/plan";
 import type {
   PlanningStep,
   PlanStatus,
@@ -17,7 +17,7 @@ const DEFAULT_FORM: TripPlanRequest = {
   pace: "轻松",
 };
 
-const MOCK_STEPS: PlanningStep[] = [
+const PLANNING_STEPS: PlanningStep[] = [
   {
     id: "parse",
     label: "理解旅行愿望",
@@ -50,6 +50,18 @@ const MOCK_STEPS: PlanningStep[] = [
   },
 ];
 
+const PHASE_STEP_INDEX: Record<string, number> = {
+  parse_input: 0,
+  fetch_weather: 1,
+  search_poi: 2,
+  search_food: 2,
+  plan_itinerary: 3,
+  budget_check: 3,
+  adapt_weather: 3,
+  add_couple_touch: 4,
+  output_format: 4,
+};
+
 interface TripStore {
   form: TripPlanRequest;
   plan: TripPlanResponse | null;
@@ -62,8 +74,22 @@ interface TripStore {
   resetPlan: () => void;
 }
 
-function wait(milliseconds: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+function freshSteps(): PlanningStep[] {
+  return PLANNING_STEPS.map((step) => ({ ...step, status: "pending" }));
+}
+
+function progressForPhase(phase: string): PlanningStep[] {
+  const activeIndex = PHASE_STEP_INDEX[phase] ?? 0;
+
+  return PLANNING_STEPS.map((step, index) => ({
+    ...step,
+    status:
+      index < activeIndex
+        ? "done"
+        : index === activeIndex
+          ? "active"
+          : "pending",
+  }));
 }
 
 export const useTripStore = create<TripStore>((set, get) => ({
@@ -71,7 +97,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
   plan: null,
   status: "idle",
   currentStep: "",
-  progress: MOCK_STEPS.map((step) => ({ ...step, status: "pending" })),
+  progress: freshSteps(),
   error: null,
 
   updateForm: (patch) => {
@@ -85,42 +111,41 @@ export const useTripStore = create<TripStore>((set, get) => ({
       return;
     }
 
+    const request = get().form;
+
     set({
       status: "planning",
       plan: null,
       error: null,
       currentStep: "正在理解你们的旅行愿望",
-      progress: MOCK_STEPS.map((step, index) => ({
-        ...step,
-        status: index === 0 ? "active" : "pending",
-      })),
+      progress: progressForPhase("parse_input"),
     });
 
-    for (let index = 0; index < MOCK_STEPS.length; index += 1) {
-      await wait(560);
+    try {
+      const plan = await createPlan(request, {
+        onStep: (event) => {
+          set({
+            currentStep: event.message || "正在规划行程",
+            progress: progressForPhase(event.phase),
+          });
+        },
+      });
 
       set({
-        currentStep: MOCK_STEPS[index].description,
-        progress: MOCK_STEPS.map((step, stepIndex) => ({
-          ...step,
-          status:
-            stepIndex < index
-              ? "done"
-              : stepIndex === index
-                ? "active"
-                : "pending",
-        })),
+        plan,
+        status: "ready",
+        currentStep: "行程已就绪",
+        progress: PLANNING_STEPS.map((step) => ({ ...step, status: "done" })),
       });
+    } catch (error) {
+      set({
+        status: "error",
+        error: error instanceof Error ? error.message : "行程生成失败，请稍后重试",
+        currentStep: "规划失败",
+        progress: freshSteps(),
+      });
+      throw error;
     }
-
-    await wait(360);
-
-    set({
-      plan: createMockPlan(get().form),
-      status: "ready",
-      currentStep: "行程已就绪",
-      progress: MOCK_STEPS.map((step) => ({ ...step, status: "done" })),
-    });
   },
 
   resetPlan: () => {
@@ -129,7 +154,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
       plan: null,
       status: "idle",
       currentStep: "",
-      progress: MOCK_STEPS.map((step) => ({ ...step, status: "pending" })),
+      progress: freshSteps(),
       error: null,
     });
   },

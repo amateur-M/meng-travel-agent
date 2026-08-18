@@ -112,7 +112,8 @@ meng-travel-agent/
 │       │   └── Loading.tsx          # 规划中动画页
 │       ├── services/
 │       │   ├── api.ts               # Axios 实例 + 拦截器
-│       │   └── sse.ts               # SSE 连接管理
+│       │   ├── sse.ts               # SSE 连接管理
+│       │   └── plan.ts              # POST /api/plan + 响应归一化
 │       ├── stores/
 │       │   ├── tripStore.ts         # 表单 / 行程 / 预算状态
 │       │   └── uiStore.ts           # 主题 / 动画状态

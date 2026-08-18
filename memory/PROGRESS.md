@@ -117,6 +117,8 @@
 - [x] Added `mocks/trip.ts` with dynamic mock itinerary for UI-only preview
 - [x] Added `services/api.ts` Axios instance with response error normalization
 - [x] Added `services/sse.ts` EventSource connection manager
+- [x] Added `services/plan.ts` POST /api/plan stream parser with backend response normalization
+- [x] Wired `tripStore.beginPlanning` to real backend SSE instead of mock planning flow
 - [x] Added Zustand `tripStore` for form, plan, budget, planning status, and progress
 - [x] Added Zustand `uiStore` for theme and reduced-motion state
 - [x] Built `TripForm` with destination selector, date range, budget slider, preference tags, and pace selector
@@ -142,3 +144,4 @@
 - Frontend M3 TypeScript typecheck passed (`tsc -p tsconfig.app.json` and `tsconfig.node.json`)
 - Frontend M3 Vite production build passed
 - Frontend dev server verified on `http://127.0.0.1:5173` with HTTP 200
+- Backend `POST /api/plan` integration verified through Vite proxy and returns SSE `complete`

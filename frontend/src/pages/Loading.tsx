@@ -1,11 +1,14 @@
 import { useEffect } from "react";
 import { motion } from "framer-motion";
 import {
+  AlertCircle,
+  ArrowLeft,
   CloudSun,
   Compass,
   HeartHandshake,
   MapPinned,
   Plane,
+  RotateCcw,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { SSEProgress } from "../components/SSEProgress/SSEProgress";
@@ -47,11 +50,15 @@ export function Loading() {
   const status = useTripStore((state) => state.status);
   const currentStep = useTripStore((state) => state.currentStep);
   const progress = useTripStore((state) => state.progress);
+  const error = useTripStore((state) => state.error);
   const beginPlanning = useTripStore((state) => state.beginPlanning);
+  const resetPlan = useTripStore((state) => state.resetPlan);
 
   useEffect(() => {
-    void beginPlanning();
-  }, [beginPlanning]);
+    if (status === "idle") {
+      void beginPlanning();
+    }
+  }, [beginPlanning, status]);
 
   useEffect(() => {
     if (status === "ready") {
@@ -59,6 +66,42 @@ export function Loading() {
       return () => window.clearTimeout(timer);
     }
   }, [navigate, status]);
+
+  if (status === "error") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-cream-50 px-4 py-10 text-ink-900">
+        <div className="flex w-full max-w-sm flex-col items-center text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+            <AlertCircle className="h-7 w-7" />
+          </div>
+          <h1 className="mt-5 text-xl font-semibold">行程没有生成成功</h1>
+          <p className="mt-2 text-sm leading-6 text-ink-500">{error}</p>
+
+          <div className="mt-6 grid w-full gap-2">
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blush-500 px-4 text-sm font-semibold text-white transition hover:bg-blush-600"
+              onClick={() => void beginPlanning()}
+            >
+              <RotateCcw className="h-4 w-4" />
+              重试
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-cream-200 bg-white px-4 text-sm font-medium text-ink-500 transition hover:text-ink-900"
+              onClick={() => {
+                resetPlan();
+                navigate("/");
+              }}
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回首页
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-cream-50 px-4 py-10 text-ink-900">

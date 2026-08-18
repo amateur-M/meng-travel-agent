@@ -66,8 +66,8 @@
 | 页面 | ✅ | Home 输入 / PlanResult 时间轴展示 / Loading 规划动画 |
 | 组件 | ✅ | TripForm、Timeline、TimelineCard、BudgetBar、WeatherBadge、CoupleQuote、SSEProgress |
 | 状态管理 | ✅ | Zustand `tripStore`（表单/结果/预算）+ `uiStore`（主题/动画） |
-| API 层 | ✅ | `api.ts` Axios 实例与拦截器 + `sse.ts` SSE 连接管理 |
-| Mock 数据 | ✅ | `mocks/trip.ts` 供 UI 独立预览，API 联调留待下一步 |
+| API 层 | ✅ | `api.ts` Axios + `sse.ts` SSE 连接管理 + `plan.ts` POST /api/plan 真实流式解析 |
+| Mock 数据 | ✅ | `mocks/trip.ts` 保留为离线预览，正式规划已由后端真实数据取代 |
 | 视觉与动效 | ✅ | 暖粉/奶白/淡金、圆角软阴影、Framer Motion stagger、移动端优先 |
 | 验证 | ✅ | TypeScript 类型检查与 Vite 生产构建通过 |
 
