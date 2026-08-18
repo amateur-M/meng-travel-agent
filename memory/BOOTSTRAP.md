@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M3 完成，前端基础 UI 已实现（TripForm / ItineraryCard / ActivityItem / BudgetBar + SSE API 层）；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
+**当前阶段**：M3 完成，前端核心 UI 已按页面/组件分层重构（Home / PlanResult / Loading、TripForm / Timeline / TimelineCard / BudgetBar / WeatherBadge / CoupleQuote / SSEProgress、Zustand stores 与 api/sse 服务层）；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
 
 **下一步行动**：
 1. 进入 M4：预算透明与天气自适应
@@ -19,7 +19,7 @@
 | [ROADMAP.md](D:/Project/meng-travel-agent/memory/ROADMAP.md) | 实现路线图（8 个里程碑 + 验收标准 + 依赖关系） |
 | [ARCHITECTURE.md](D:/Project/meng-travel-agent/memory/ARCHITECTURE.md) | 系统架构（LangGraph 设计、API 协议、数据流、目录结构） |
 | [PROGRESS.md](D:/Project/meng-travel-agent/memory/PROGRESS.md) | 开发进度（里程碑完成清单） |
-| [PROJECT_STRUCTURE.md](D:/Project/meng-travel-agent/memory/PROJECT_STRUCTURE.md) | 实际目录结构 + M2 新增文件清单 |
+| [PROJECT_STRUCTURE.md](D:/Project/meng-travel-agent/memory/PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
 ---
 
@@ -56,6 +56,20 @@
 | `plan_itinerary._build_prompt()` | ✅ | 修复模板替换并返回完整 prompt |
 | 测试 | ✅ | 148 passed + 1 skipped（新增 QWeather 鉴权单测、真实 API 冒烟测试与 vcrpy cassette 测试） |
 | 真实 API 验证 | ✅ | Qwen 已通过；QWeather GeoAPI 与 daily forecast 已通过，并录制 vcrpy cassette |
+
+---
+
+## M3 前端重构 (2026-08-18)
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 页面 | ✅ | Home 输入 / PlanResult 时间轴展示 / Loading 规划动画 |
+| 组件 | ✅ | TripForm、Timeline、TimelineCard、BudgetBar、WeatherBadge、CoupleQuote、SSEProgress |
+| 状态管理 | ✅ | Zustand `tripStore`（表单/结果/预算）+ `uiStore`（主题/动画） |
+| API 层 | ✅ | `api.ts` Axios 实例与拦截器 + `sse.ts` SSE 连接管理 |
+| Mock 数据 | ✅ | `mocks/trip.ts` 供 UI 独立预览，API 联调留待下一步 |
+| 视觉与动效 | ✅ | 暖粉/奶白/淡金、圆角软阴影、Framer Motion stagger、移动端优先 |
+| 验证 | ✅ | TypeScript 类型检查与 Vite 生产构建通过 |
 
 ---
 

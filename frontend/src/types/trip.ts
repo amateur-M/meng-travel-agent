@@ -11,6 +11,16 @@ export type ActivityType =
   | "冒险"
   | "留白";
 
+export type WeatherKind =
+  | "sunny"
+  | "cloudy"
+  | "rainy"
+  | "windy"
+  | "hot"
+  | "snowy";
+
+export type PlanStatus = "idle" | "planning" | "ready" | "error";
+
 export interface TripPlanRequest {
   origin: string;
   destination: string;
@@ -39,6 +49,7 @@ export interface DayPlan {
   day_index: number;
   trip_date: string;
   weather_condition: string;
+  weather_kind?: WeatherKind | null;
   weather_high?: number | null;
   weather_low?: number | null;
   activities: Activity[];
@@ -70,3 +81,12 @@ export interface PlanStepEvent {
   phase: string;
   message: string;
 }
+
+export interface PlanningStep {
+  id: string;
+  label: string;
+  description: string;
+  status: "pending" | "active" | "done";
+}
+
+export type Theme = "light" | "dark";

@@ -2,8 +2,72 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: light;
+  --page-bg: #fffaf4;
+  --surface: #ffffff;
+  --text: #30252a;
+  --muted: #79666c;
+  --line: #f2d4b7;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page-bg: #241c20;
+  --surface: #33272c;
+  --text: #fff5f7;
+  --muted: #c9aeb7;
+  --line: #5a444b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--page-bg);
+}
+
 body {
+  min-width: 320px;
+  min-height: 100vh;
   margin: 0;
+  background: var(--page-bg);
+  color: var(--text);
+  font-family:
+    "Avenir Next",
+    "PingFang SC",
+    "Microsoft YaHei",
+    system-ui,
+    sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+::selection {
+  background: #f9c2d1;
+  color: #30252a;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
 }

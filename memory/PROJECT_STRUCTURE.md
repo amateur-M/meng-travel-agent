@@ -88,18 +88,40 @@ meng-travel-agent/
 │       ├── index.css                # Tailwind 指令
 │       ├── vite-env.d.ts            # Vite 类型声明
 │       ├── components/
-│       │   ├── TripForm.tsx         # 行程输入表单
-│       │   ├── ItineraryCard.tsx    # 每日行程卡片
-│       │   ├── ActivityItem.tsx     # 单项活动
-│       │   └── BudgetBar.tsx        # 预算进度条
+│       │   ├── TripForm/            # 行程输入表单
+│       │   │   ├── TripForm.tsx
+│       │   │   ├── DestinationSelect.tsx
+│       │   │   ├── DateRangePicker.tsx
+│       │   │   ├── BudgetSlider.tsx
+│       │   │   └── PreferenceTags.tsx
+│       │   ├── Timeline/            # 行程时间轴（Day 1 → Day N）
+│       │   │   └── Timeline.tsx
+│       │   ├── TimelineCard/        # 单个活动卡片
+│       │   │   └── TimelineCard.tsx
+│       │   ├── BudgetBar/           # 预算进度条
+│       │   │   └── BudgetBar.tsx
+│       │   ├── WeatherBadge/        # 天气标识
+│       │   │   └── WeatherBadge.tsx
+│       │   ├── CoupleQuote/         # 情侣寄语气泡
+│       │   │   └── CoupleQuote.tsx
+│       │   └── SSEProgress/         # Agent 进度可视化
+│       │       └── SSEProgress.tsx
 │       ├── pages/
-│       │   └── Home.tsx             # 首页（表单 + 行程展示）
-│       ├── hooks/                   # 自定义 hooks（M6 SSE 等）
+│       │   ├── Home.tsx             # 首页（行程输入）
+│       │   ├── PlanResult.tsx       # 行程展示页
+│       │   └── Loading.tsx          # 规划中动画页
 │       ├── services/
-│       │   └── plan.ts              # POST /api/plan + SSE 解析
-│       ├── stores/                  # Zustand 状态管理
-│       └── types/
-│           └── trip.ts              # 前端行程类型定义
+│       │   ├── api.ts               # Axios 实例 + 拦截器
+│       │   └── sse.ts               # SSE 连接管理
+│       ├── stores/
+│       │   ├── tripStore.ts         # 表单 / 行程 / 预算状态
+│       │   └── uiStore.ts           # 主题 / 动画状态
+│       ├── types/
+│       │   └── trip.ts              # 前端行程类型定义
+│       ├── config/
+│       │   └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
+│       └── mocks/
+│           └── trip.ts              # Mock 行程数据
 │
 ├── docker-compose.yml               # Docker 编排
 ├── .gitignore                       # Git 忽略规则
@@ -147,14 +169,24 @@ meng-travel-agent/
 | `tests/cassettes/qweather_city_lookup.yaml` | 城市坐标查询 cassette |
 | `tests/cassettes/qweather_daily_forecast.yaml` | 城市查询 + daily forecast cassette |
 
-## M3 前端基础 UI 新增文件 (2026-08-16)
+## M3 前端核心实现文件 (2026-08-18)
 
 | 文件 | 说明 |
 |------|------|
-| `frontend/src/types/trip.ts` | `TripPlanRequest` / `TripPlanResponse` 等 TypeScript 类型 |
-| `frontend/src/services/plan.ts` | `POST /api/plan` 调用与 SSE 事件解析 |
-| `frontend/src/components/TripForm.tsx` | 日期、地点、预算、偏好、节奏表单 |
-| `frontend/src/components/ItineraryCard.tsx` | 按上午/下午/晚间分组的每日行程卡片 |
-| `frontend/src/components/ActivityItem.tsx` | 活动类型、时间、地点、花费、情侣寄语 |
-| `frontend/src/components/BudgetBar.tsx` | 预算使用进度条 |
-| `frontend/src/pages/Home.tsx` | M3 首页，组合表单和行程结果 |
+| `frontend/src/types/trip.ts` | 行程请求 / 响应、活动、预算、天气、进度类型 |
+| `frontend/src/config/tripOptions.ts` | 出发地 / 目的地 / 偏好 / 节奏选项 |
+| `frontend/src/mocks/trip.ts` | 动态 Mock 行程与预算数据 |
+| `frontend/src/services/api.ts` | Axios 实例 + 响应错误归一化 |
+| `frontend/src/services/sse.ts` | SSE 连接管理与事件分发 |
+| `frontend/src/stores/tripStore.ts` | 表单 / 行程 / 预算 / 规划进度状态 |
+| `frontend/src/stores/uiStore.ts` | 主题 / 动画状态 |
+| `frontend/src/pages/Home.tsx` | 行程输入首页 |
+| `frontend/src/pages/PlanResult.tsx` | 行程时间轴展示页 |
+| `frontend/src/pages/Loading.tsx` | 规划中动画页 |
+| `frontend/src/components/TripForm/` | 目的地选择、日期范围、预算滑块、偏好标签 |
+| `frontend/src/components/Timeline/` | 按 Day 1 → Day N 展开 / 折叠的时间轴 |
+| `frontend/src/components/TimelineCard/` | 单个活动卡片 |
+| `frontend/src/components/BudgetBar/` | 实时预算进度条 |
+| `frontend/src/components/WeatherBadge/` | 晴 / 雨 / 高温天气标识 |
+| `frontend/src/components/CoupleQuote/` | 情侣共情文案气泡 |
+| `frontend/src/components/SSEProgress/` | Agent 思考过程可视化 |

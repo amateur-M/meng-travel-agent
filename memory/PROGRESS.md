@@ -5,7 +5,7 @@
 | M0 | Done | 2026-08-10 | 2026-08-10 | Project scaffold complete |
 | M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
 | M2 | Done | 2026-08-11 | 2026-08-16 | External API + LLM integration |
-| M3 | Done | 2026-08-16 | 2026-08-16 | Frontend basic UI |
+| M3 | Done | 2026-08-16 | 2026-08-18 | Frontend core UI refactor |
 | M4 | Pending | — | — | Budget + weather |
 | M5 | Pending | — | — | Rhythm + couple messages |
 | M6 | Pending | — | — | SSE streaming |
@@ -110,17 +110,24 @@
 - [x] Full offline suite: 148 passed + 1 skipped
 - [x] Real QWeather smoke test: 1 passed
 
-## M3 Completion Checklist (2026-08-16)
+## M3 Completion Checklist (2026-08-18)
 
-- [x] Added `frontend/src/types/trip.ts` matching backend schemas
-- [x] Added `frontend/src/services/plan.ts` with `POST /api/plan` SSE parsing
-- [x] Built `TripForm` with origin, destination, dates, budget, preferences, and pace
-- [x] Built `ItineraryCard` with date, weather, period grouping, and daily cost
-- [x] Built `ActivityItem` with type badge, time, location, cost, and couple note
-- [x] Built `BudgetBar` with total spent / total budget progress
-- [x] Wired `Home` page and replaced the scaffold route
-- [x] Added `lucide-react` icon dependency
-- [x] Verified frontend build and frontend proxy to `POST /api/plan`
+- [x] Refactored `types/trip.ts` with trip request, response, activity, budget, weather, and progress types
+- [x] Added `config/tripOptions.ts` for destination, origin, preference, and pace options
+- [x] Added `mocks/trip.ts` with dynamic mock itinerary for UI-only preview
+- [x] Added `services/api.ts` Axios instance with response error normalization
+- [x] Added `services/sse.ts` EventSource connection manager
+- [x] Added Zustand `tripStore` for form, plan, budget, planning status, and progress
+- [x] Added Zustand `uiStore` for theme and reduced-motion state
+- [x] Built `TripForm` with destination selector, date range, budget slider, preference tags, and pace selector
+- [x] Built `Timeline` with Day 1 to Day N expand/collapse and morning/afternoon/evening grouping
+- [x] Built `TimelineCard` with activity icon, time, location, cost, weather note, and couple note
+- [x] Built `BudgetBar` with animated spent/total progress and over-budget warning
+- [x] Built `WeatherBadge` with weather type, temperature, and adaptive hint
+- [x] Built `CoupleQuote` with handwritten font and fade-in animation
+- [x] Built `SSEProgress` for Agent step visualization
+- [x] Built `Home`, `PlanResult`, and `Loading` pages with React Router routes
+- [x] Applied warm pink, cream, and gold visual system with mobile-first responsive layout
 
 ## Verification
 
@@ -132,5 +139,6 @@
 - vcrpy cassette tests replay external API calls without network access
 - Latest offline test result: 148 passed + 1 skipped
 - Latest real QWeather smoke test: 1 passed
-- Frontend M3 build passed with Vite + TypeScript
-- Frontend proxy integration passed: `POST /api/plan` returns SSE `complete`
+- Frontend M3 TypeScript typecheck passed (`tsc -p tsconfig.app.json` and `tsconfig.node.json`)
+- Frontend M3 Vite production build passed
+- Frontend dev server verified on `http://127.0.0.1:5173` with HTTP 200
