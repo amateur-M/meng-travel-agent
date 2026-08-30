@@ -8,8 +8,19 @@ from agents.nodes.fetch_weather import fetch_weather
 from agents.nodes.search_poi import search_poi
 from agents.nodes.search_food import search_food
 from agents.nodes.plan_itinerary import plan_itinerary, _mock_itinerary
-from agents.nodes.budget_check import budget_check, _sum_costs, _daily_costs
-from agents.nodes.adapt_weather import adapt_weather, _find_indoor_replacement
+from agents.nodes.budget_check import (
+    budget_check,
+    _daily_costs,
+    _rule_based_budget_downgrade,
+    _sum_costs,
+    _warning_level,
+)
+from agents.nodes.adapt_weather import (
+    adapt_weather,
+    _find_indoor_replacement,
+    _is_hot,
+    _is_rain,
+)
 
 
 def _full_input_state(destination="Dali", budget=5000, days=3, preferences=None):
@@ -82,11 +93,12 @@ class TestBudgetCheck:
         assert result["budget_breakdown"]["over_budget"] is False
         assert result["retry_count"] == 0
 
-    def test_over_budget_triggers_retry(self):
+    def test_over_budget_triggers_downgrade(self):
         state = _full_input_state(budget=1)
         state.update(plan_itinerary(state))
         result = budget_check(state)
-        assert result["budget_breakdown"]["over_budget"] is True
+        assert result["budget_breakdown"]["downgrade_applied"] is True
+        assert result["budget_breakdown"]["over_budget"] is False
         assert result["retry_count"] >= 1
 
     def test_budget_breakdown_structure(self):
@@ -118,6 +130,31 @@ class TestBudgetCheck:
     def test_empty_itinerary_costs(self):
         assert _sum_costs({"days": []}) == 0.0
         assert _daily_costs({"days": []}) == []
+
+    def test_warning_level_thresholds(self):
+        assert _warning_level(4400, 5000) == "ok"
+        assert _warning_level(4500, 5000) == "warning"
+        assert _warning_level(5001, 5000) == "over"
+
+    def test_over_budget_applies_downgrade(self):
+        state = _full_input_state(budget=1)
+        state.update(plan_itinerary(state))
+        result = budget_check(state)
+        breakdown = result["budget_breakdown"]
+        assert breakdown["downgrade_applied"] is True
+        assert breakdown["total_spent"] <= breakdown["total_budget"]
+        assert "days" in result["draft_itinerary"]
+
+    def test_rule_based_downgrade_returns_adjusted_draft(self):
+        state = _full_input_state(budget=1)
+        state.update(plan_itinerary(state))
+        adjusted, adjustments = _rule_based_budget_downgrade(
+            state,
+            state["draft_itinerary"],
+            1,
+        )
+        assert _sum_costs(adjusted) <= 1
+        assert adjustments
 
 
 class TestAdaptWeather:
@@ -151,6 +188,45 @@ class TestAdaptWeather:
         state.update(plan_itinerary(state))
         result = adapt_weather(state)
         assert result["current_phase"] == "adapt_weather"
+
+    def test_rain_swaps_outdoor_to_indoor(self):
+        state = _full_input_state(days=1)
+        state["weather_data"] = {
+            "2026-09-01": {"condition": "中雨", "high": 24, "low": 18, "precip_prob": 0.8},
+        }
+        state.update(plan_itinerary(state))
+        result = adapt_weather(state)
+        swaps = result["weather_swaps"]
+        assert any(item["adjustment_type"] == "swap" for item in swaps)
+        assert any(
+            activity.get("indoor_backup")
+            for day in result["draft_itinerary"]["days"]
+            for activity in day["activities"]
+        )
+
+    def test_hot_weather_moves_outdoor_activity(self):
+        state = _full_input_state(days=1)
+        state["weather_data"] = {
+            "2026-09-01": {"condition": "晴", "high": 38, "low": 28, "precip_prob": 0.0},
+        }
+        state.update(plan_itinerary(state))
+        result = adapt_weather(state)
+        activities = [
+            activity
+            for day in result["draft_itinerary"]["days"]
+            for activity in day["activities"]
+        ]
+        assert any(
+            activity.get("start_time") in ("08:00", "17:00")
+            and activity.get("weather_note")
+            for activity in activities
+        )
+
+    def test_weather_condition_helpers(self):
+        assert _is_rain({"condition": "Rain", "condition_en": "rain"})
+        assert _is_rain({"condition": "雷阵雨"})
+        assert _is_hot({"high": 36})
+        assert not _is_hot({"high": 35})
 
     def test_find_indoor_replacement_returns_dict(self):
         pois = [

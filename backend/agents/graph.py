@@ -50,8 +50,11 @@ def _route_after_budget(state: AgentState) -> str:
     """
     bb = state.get("budget_breakdown", {})
     over = bb.get("over_budget", False)
+    downgrade_applied = bb.get("downgrade_applied", False)
     retries = state.get("retry_count", 0)
 
+    if downgrade_applied:
+        return "adapt_weather"
     if over and retries < 2:
         return "plan_itinerary"
     return "adapt_weather"

@@ -50,9 +50,10 @@ def test_qweather_city_lookup_cassette():
     assert lon == pytest.approx(116.40529, abs=1e-3)
 
 
-def test_qweather_daily_forecast_cassette():
-    start = "2026-08-17"
-    end = "2026-08-18"
+def test_qweather_daily_forecast_cassette(monkeypatch):
+    monkeypatch.setattr(weather_tool_module, "_forecast_days", lambda start, end: 2)
+    start = "2026-08-16"
+    end = "2026-08-17"
 
     with _vcr().use_cassette("qweather_daily_forecast.yaml"):
         result = weather_tool_module._fetch_qweather_sync("北京", start, end)

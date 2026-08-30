@@ -288,7 +288,8 @@ def _qweather_headers() -> dict:
 def _forecast_days(start: str, end: str) -> int:
     """Return the number of daily forecast entries to request (max 10)."""
     try:
-        sd = date.fromisoformat(start)
+        # sd应该为当前日期
+        sd = date.fromisoformat(date.today().isoformat())
         ed = date.fromisoformat(end)
         return max(1, min(10, (ed - sd).days + 1))
     except (ValueError, TypeError):

@@ -43,6 +43,10 @@ class AgentState(TypedDict, total=False):
     #   The polished, validated TripPlan (serialisable to TripPlanResponse).
     budget_breakdown: dict
     #   { "total_budget", "total_spent", "over_budget", "by_day", "downgrade_notes" }
+    downgrade_suggestions: list
+    #   Structured downgrade adjustments generated when spending exceeds budget.
+    weather_swaps: list
+    #   Weather-driven itinerary changes emitted to the frontend for explanation.
     couple_notes: List[str]
     #   Per-activity couple messages, collected across nodes.
     messages: Annotated[list, add_messages]

@@ -5,12 +5,13 @@ import {
   type Variants,
 } from "framer-motion";
 import { ChevronDown, Moon, Sun, Sunrise } from "lucide-react";
-import type { DayPlan, Period } from "../../types/trip";
+import type { DayPlan, Period, WeatherSwap } from "../../types/trip";
 import { TimelineCard } from "../TimelineCard/TimelineCard";
 import { WeatherBadge } from "../WeatherBadge/WeatherBadge";
 
 interface TimelineProps {
   days: DayPlan[];
+  weatherSwaps?: WeatherSwap[];
 }
 
 const PERIODS: Period[] = ["上午", "下午", "晚间"];
@@ -39,11 +40,17 @@ const dayVariants: Variants = {
 
 interface TimelineDayProps {
   day: DayPlan;
+  weatherSwaps: WeatherSwap[];
   expanded: boolean;
   onToggle: () => void;
 }
 
-function TimelineDay({ day, expanded, onToggle }: TimelineDayProps) {
+function TimelineDay({
+  day,
+  weatherSwaps,
+  expanded,
+  onToggle,
+}: TimelineDayProps) {
   const dateLabel = new Intl.DateTimeFormat("zh-CN", {
     month: "long",
     day: "numeric",
@@ -54,6 +61,10 @@ function TimelineDay({ day, expanded, onToggle }: TimelineDayProps) {
     period,
     activities: day.activities.filter((activity) => activity.period === period),
   })).filter((group) => group.activities.length > 0);
+  const adaptations = weatherSwaps
+    .filter((swap) => swap.day_index === day.day_index)
+    .map((swap) => swap.reason)
+    .filter((reason, index, items) => items.indexOf(reason) === index);
 
   return (
     <motion.section
@@ -91,6 +102,7 @@ function TimelineDay({ day, expanded, onToggle }: TimelineDayProps) {
           high={day.weather_high}
           low={day.weather_low}
           note={day.day_note}
+          adaptations={adaptations}
         />
       </div>
 
@@ -141,7 +153,7 @@ function TimelineDay({ day, expanded, onToggle }: TimelineDayProps) {
 /**
  * 行程时间轴，按 Day 1 到 Day N 展开，每天再分为上午、下午和晚间。
  */
-export function Timeline({ days }: TimelineProps) {
+export function Timeline({ days, weatherSwaps = [] }: TimelineProps) {
   const [expandedDays, setExpandedDays] = useState<Set<number>>(
     () => new Set(days.map((day) => day.day_index)),
   );
@@ -171,6 +183,7 @@ export function Timeline({ days }: TimelineProps) {
         <TimelineDay
           key={day.day_index}
           day={day}
+          weatherSwaps={weatherSwaps}
           expanded={expandedDays.has(day.day_index)}
           onToggle={() => toggleDay(day.day_index)}
         />

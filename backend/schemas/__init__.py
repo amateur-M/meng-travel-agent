@@ -86,8 +86,20 @@ class BudgetBreakdown(BaseModel):
     total_spent: float = Field(..., description="总花费")
     by_day: List[float] = Field(default_factory=list, description="每日花费")
     over_budget: bool = Field(default=False)
+    warning_level: str = Field(default="ok", description="预算状态: ok / warning / over")
+    spending_ratio: float = Field(default=0.0, description="预算使用比例")
     downgrade_applied: bool = Field(default=False, description="是否已降级")
     downgrade_notes: List[str] = Field(default_factory=list)
+
+
+class WeatherSwap(BaseModel):
+    """A weather-driven itinerary adjustment shown in the UI."""
+
+    day_index: int = Field(..., description="第几天（0-based）")
+    original_name: str = Field(..., description="原活动名称")
+    replacement_name: str = Field(..., description="调整后活动名称")
+    reason: str = Field(default="", description="调整原因")
+    adjustment_type: str = Field(default="swap", description="swap / time_shift")
 
 
 class TripPlanResponse(BaseModel):
@@ -100,6 +112,10 @@ class TripPlanResponse(BaseModel):
     budget_breakdown: BudgetBreakdown
     days: List[DayPlan] = Field(default_factory=list)
     couple_notes: List[str] = Field(default_factory=list, description="情侣寄语汇总")
+    weather_swaps: List[WeatherSwap] = Field(
+        default_factory=list,
+        description="天气自适应调整记录",
+    )
     status: str = Field(default="completed")
 
 

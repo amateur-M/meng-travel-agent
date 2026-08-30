@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from schemas import (
     TripPlanRequest, TripPlanResponse,
-    Activity, DayPlan, BudgetBreakdown, SSEEvent,
+    Activity, DayPlan, BudgetBreakdown, WeatherSwap, SSEEvent,
     Pace, Period, ActivityType,
 )
 
@@ -139,6 +139,44 @@ class TestBudgetBreakdown:
         assert b.over_budget is True
         assert len(b.downgrade_notes) == 1
 
+    def test_warning_level_defaults(self):
+        b = BudgetBreakdown(total_budget=5000, total_spent=3200)
+        assert b.warning_level == "ok"
+        assert b.spending_ratio == 0.0
+
+    def test_warning_level_round_trip(self):
+        b = BudgetBreakdown(
+            total_budget=5000,
+            total_spent=5200,
+            warning_level="over",
+            spending_ratio=1.04,
+        )
+        assert b.warning_level == "over"
+        assert b.spending_ratio == 1.04
+
+
+class TestWeatherSwap:
+    """WeatherSwap model validation."""
+
+    def test_weather_swap(self):
+        swap = WeatherSwap(
+            day_index=0,
+            original_name="洱海骑行",
+            replacement_name="周城扎染博物馆",
+            reason="中雨，切换室内方案",
+        )
+        assert swap.adjustment_type == "swap"
+
+    def test_time_shift(self):
+        swap = WeatherSwap(
+            day_index=1,
+            original_name="爬苍山",
+            replacement_name="爬苍山",
+            reason="高温，避开正午",
+            adjustment_type="time_shift",
+        )
+        assert swap.adjustment_type == "time_shift"
+
 
 class TestTripPlanResponse:
     """Final response model validation."""
@@ -166,8 +204,17 @@ class TestTripPlanResponse:
                 DayPlan(day_index=1, trip_date=date(2026, 10, 2)),
             ],
             couple_notes=["在丽江遇见最美的你"],
+            weather_swaps=[
+                WeatherSwap(
+                    day_index=0,
+                    original_name="洱海骑行",
+                    replacement_name="周城扎染博物馆",
+                    reason="中雨，切换室内方案",
+                )
+            ],
         )
         assert len(resp.days) == 2
+        assert len(resp.weather_swaps) == 1
 
 
 class TestSSEEvent:

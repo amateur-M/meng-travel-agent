@@ -134,3 +134,31 @@
 - Users naturally expect a trip from 2026-09-01 to 2026-09-03 to contain three travel days
 - Downstream nodes already consume `num_days` as an inclusive day count when generating weather and itinerary
 - The prior exclusive calculation silently dropped the return date from multi-day plans
+
+### 15. Budget Downgrade Is Applied Deterministically
+
+**Decision**: `budget_check` always produces and applies a deterministic downgrade when the draft exceeds the budget, even when no LLM key is configured.
+
+**Rationale**:
+- The M1 budget-retry loop regenerated the itinerary but could silently leave the final plan over budget
+- A deterministic POI/restaurant replacement guarantees that the returned plan matches the transparent budget state
+- Once a downgrade is applied, `_route_after_budget` routes straight to `adapt_weather` so regenerating the draft does not undo the savings
+- The LLM remains useful for richer reasoning, but it is treated as an optional enhancement rather than a correctness dependency
+
+### 16. Weather Adjustments Are Returned As Structured Events
+
+**Decision**: `adapt_weather` stores each rain swap and high-temperature time shift in `weather_swaps`, and the final API response exposes them as `WeatherSwap` objects.
+
+**Rationale**:
+- Acceptance requires the UI to mark *why* an activity changed, not just show a final weather note
+- A structured list is easier for the frontend to group by `day_index` and render alongside `WeatherBadge`
+- Keeping `adjustment_type` (`swap` / `time_shift`) leaves room for future weather rules without changing the response shape
+
+### 17. Budget Warnings Are Modeled As Three Levels
+
+**Decision**: `BudgetBreakdown` uses `warning_level` (`ok` / `warning` / `over`) and `spending_ratio`.
+
+**Rationale**:
+- The frontend can distinguish `<90%`, `90%–100%`, and `>100%` without duplicating threshold logic
+- `spending_ratio` keeps the API useful for future budget charts and progress indicators
+- The existing boolean `over_budget` is retained for backward compatibility and fast conditional checks

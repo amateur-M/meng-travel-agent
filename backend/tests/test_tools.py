@@ -2,6 +2,7 @@
 
 import json
 import pytest
+from datetime import date, timedelta
 from unittest.mock import patch, MagicMock
 
 from config.settings import settings
@@ -91,9 +92,12 @@ class TestQWeather:
         assert day["humidity"] == 52.0
         assert day["precip_prob"] == 0.64
 
-    def test_forecast_days_clamps_to_ten(self):
-        assert _forecast_days("2026-09-01", "2026-09-03") == 3
-        assert _forecast_days("2026-09-01", "2026-09-30") == 10
+    def test_forecast_days_counts_from_today_to_end(self):
+        near_end = (date.today() + timedelta(days=2)).isoformat()
+        far_end = (date.today() + timedelta(days=20)).isoformat()
+        assert _forecast_days("2020-01-01", near_end) == 3
+        assert _forecast_days("2020-01-01", far_end) == 10
+        assert _forecast_days("2026-09-01", "2020-01-01") == 1
 
     def test_qweather_headers_uses_bearer_token(self):
         with patch(

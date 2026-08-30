@@ -4,7 +4,6 @@ M2: delegates to weather_tool which tries QWeather (和风天气) first,
 falls back to a 12-city seasonal mock database on failure.
 """
 
-import json
 from datetime import date, timedelta
 from typing import Dict, Any
 

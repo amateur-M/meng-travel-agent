@@ -8,6 +8,7 @@ import type {
   TripPlanRequest,
   TripPlanResponse,
   WeatherKind,
+  WeatherSwap,
 } from "../types/trip";
 import { postEventStream } from "./sse";
 
@@ -180,6 +181,15 @@ function normalizeBudget(
     budget.total_spent,
     days.reduce((sum, day) => sum + day.daily_cost, 0),
   );
+  const warningLevel = ["ok", "warning", "over"].includes(
+    asString(budget.warning_level),
+  )
+    ? (asString(budget.warning_level) as "ok" | "warning" | "over")
+    : totalSpent > totalBudget
+      ? "over"
+      : totalSpent / Math.max(totalBudget, 1) >= 0.9
+        ? "warning"
+        : "ok";
 
   return {
     total_budget: totalBudget,
@@ -191,6 +201,11 @@ function normalizeBudget(
       typeof budget.over_budget === "boolean"
         ? budget.over_budget
         : totalSpent > totalBudget,
+    warning_level: warningLevel,
+    spending_ratio: asNumber(
+      budget.spending_ratio,
+      totalSpent / Math.max(totalBudget, 1),
+    ),
     downgrade_applied:
       typeof budget.downgrade_applied === "boolean"
         ? budget.downgrade_applied
@@ -199,6 +214,20 @@ function normalizeBudget(
       asString(item),
     ),
   };
+}
+
+function normalizeWeatherSwaps(value: unknown): WeatherSwap[] {
+  return asArray(value).map((item) => {
+    const swap = asRecord(item);
+    return {
+      day_index: asNumber(swap.day_index),
+      original_name: asString(swap.original_name),
+      replacement_name: asString(swap.replacement_name),
+      reason: asString(swap.reason),
+      adjustment_type:
+        swap.adjustment_type === "time_shift" ? "time_shift" : "swap",
+    };
+  });
 }
 
 function normalizePlan(
@@ -222,6 +251,7 @@ function normalizePlan(
     ),
     days,
     couple_notes: asArray(plan.couple_notes).map((note) => asString(note)),
+    weather_swaps: normalizeWeatherSwaps(plan.weather_swaps),
     status: asString(plan.status, "completed"),
   };
 }

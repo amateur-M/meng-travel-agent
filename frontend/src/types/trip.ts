@@ -62,8 +62,18 @@ export interface BudgetBreakdown {
   total_spent: number;
   by_day: number[];
   over_budget: boolean;
+  warning_level: "ok" | "warning" | "over";
+  spending_ratio: number;
   downgrade_applied: boolean;
   downgrade_notes: string[];
+}
+
+export interface WeatherSwap {
+  day_index: number;
+  original_name: string;
+  replacement_name: string;
+  reason: string;
+  adjustment_type: "swap" | "time_shift";
 }
 
 export interface TripPlanResponse {
@@ -74,6 +84,7 @@ export interface TripPlanResponse {
   budget_breakdown: BudgetBreakdown;
   days: DayPlan[];
   couple_notes: string[];
+  weather_swaps: WeatherSwap[];
   status: string;
 }
 

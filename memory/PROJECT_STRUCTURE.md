@@ -100,6 +100,8 @@ meng-travel-agent/
 │       │   │   └── TimelineCard.tsx
 │       │   ├── BudgetBar/           # 预算进度条
 │       │   │   └── BudgetBar.tsx
+│       │   ├── BudgetAlerts/        # 预算预警与降级说明
+│       │   │   └── BudgetAlerts.tsx
 │       │   ├── WeatherBadge/        # 天气标识
 │       │   │   └── WeatherBadge.tsx
 │       │   ├── CoupleQuote/         # 情侣寄语气泡
@@ -191,3 +193,19 @@ meng-travel-agent/
 | `frontend/src/components/WeatherBadge/` | 晴 / 雨 / 高温天气标识 |
 | `frontend/src/components/CoupleQuote/` | 情侣共情文案气泡 |
 | `frontend/src/components/SSEProgress/` | Agent 思考过程可视化 |
+
+## M4 新增 / 调整文件清单 (2026-08-31)
+
+| 文件 | 说明 |
+|------|------|
+| `backend/agents/nodes/budget_check.py` | 预算分级、实际降级替换、`warning_level` / `spending_ratio` |
+| `backend/agents/nodes/adapt_weather.py` | 雨天室内切换、高温时段调整、`weather_swaps` 记录 |
+| `backend/agents/nodes/output_format.py` | 归一化日期、每日天气、每日花费与天气调整记录 |
+| `backend/agents/graph.py` | 预算已降级时直接进入天气自适应，避免撤销降级 |
+| `backend/schemas/__init__.py` | 新增 `WeatherSwap`，扩展 `BudgetBreakdown` 与 `TripPlanResponse` |
+| `backend/agents/state.py` | 新增 `downgrade_suggestions` 与 `weather_swaps` 状态字段 |
+| `frontend/src/components/BudgetAlerts/` | 90% 黄色预警、超预算降级说明 |
+| `frontend/src/components/BudgetBar/` | ok / warning / over 三态展示 |
+| `frontend/src/components/WeatherBadge/` | 展示天气切换原因 |
+| `frontend/src/components/Timeline/` | 按天过滤并传递天气调整记录 |
+| `frontend/src/pages/PlanResult.tsx` | 页头增加总预算 / 已花费 / 使用比例 |

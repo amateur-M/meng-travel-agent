@@ -25,6 +25,11 @@ export function BudgetBar({
     : percentage >= 90
       ? "#ddb866"
       : "#6fbf8d";
+  const statusLabel = overBudget
+    ? "已超预算"
+    : percentage >= 90
+      ? "接近预算上限"
+      : "预算内";
 
   return (
     <div className="rounded-lg border border-cream-200 bg-white p-4 shadow-soft">
@@ -53,18 +58,27 @@ export function BudgetBar({
         <span className="text-ink-400">{percentage}%</span>
         <span
           className={`inline-flex items-center gap-1.5 font-medium ${
-            overBudget ? "text-rose-600" : "text-emerald-600"
+            overBudget
+              ? "text-rose-600"
+              : percentage >= 90
+                ? "text-amber-600"
+                : "text-emerald-600"
           }`}
         >
           {overBudget ? (
             <>
               <AlertTriangle className="h-3.5 w-3.5" />
-              已超预算
+              {statusLabel}
+            </>
+          ) : percentage >= 90 ? (
+            <>
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {statusLabel}
             </>
           ) : (
             <>
               <CircleCheck className="h-3.5 w-3.5" />
-              预算内
+              {statusLabel}
             </>
           )}
         </span>

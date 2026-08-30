@@ -6,8 +6,10 @@ import {
   HeartHandshake,
   MapPin,
   Sparkles,
+  WalletCards,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { BudgetAlerts } from "../components/BudgetAlerts/BudgetAlerts";
 import { BudgetBar } from "../components/BudgetBar/BudgetBar";
 import { CoupleQuote } from "../components/CoupleQuote/CoupleQuote";
 import { Timeline } from "../components/Timeline/Timeline";
@@ -29,6 +31,12 @@ export function PlanResult() {
   if (!plan) {
     return null;
   }
+
+  const budgetPercentage = Math.round(
+    (plan.budget_breakdown.total_spent /
+      Math.max(plan.budget_breakdown.total_budget, 1)) *
+      100,
+  );
 
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900">
@@ -74,17 +82,26 @@ export function PlanResult() {
               </div>
             </div>
 
-            <div className="flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1.5 text-xs text-ink-500">
-              <Sparkles className="h-3.5 w-3.5 text-gold-400" />
-              {plan.days.length} 天行程
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1.5 text-xs text-ink-500">
+                <Sparkles className="h-3.5 w-3.5 text-gold-400" />
+                {plan.days.length} 天行程
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1.5 text-xs text-ink-500">
+                <WalletCards className="h-3.5 w-3.5 text-blush-400" />
+                ¥{plan.budget_breakdown.total_spent.toLocaleString("zh-CN")} / ¥
+                {plan.budget_breakdown.total_budget.toLocaleString("zh-CN")} ·{" "}
+                {budgetPercentage}%
+              </div>
             </div>
           </div>
         </motion.section>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Timeline days={plan.days} />
+          <Timeline days={plan.days} weatherSwaps={plan.weather_swaps} />
 
           <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+            <BudgetAlerts budgetBreakdown={plan.budget_breakdown} />
             <BudgetBar
               totalBudget={plan.budget_breakdown.total_budget}
               totalSpent={plan.budget_breakdown.total_spent}

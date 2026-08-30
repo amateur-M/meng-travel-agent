@@ -2,6 +2,7 @@ import {
   Cloud,
   CloudRain,
   CloudSun,
+  RefreshCw,
   Snowflake,
   Sun,
   ThermometerSun,
@@ -15,6 +16,7 @@ interface WeatherBadgeProps {
   high?: number | null;
   low?: number | null;
   note?: string | null;
+  adaptations?: string[];
 }
 
 function resolveKind(condition: string, kind?: WeatherKind | null): WeatherKind {
@@ -80,6 +82,7 @@ export function WeatherBadge({
   high,
   low,
   note,
+  adaptations = [],
 }: WeatherBadgeProps) {
   const resolvedKind = resolveKind(condition, kind);
 
@@ -99,6 +102,20 @@ export function WeatherBadge({
       {note && (
         <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs text-sky-700">
           {note}
+        </span>
+      )}
+
+      {adaptations.length > 0 && (
+        <span className="flex flex-wrap gap-1.5">
+          {adaptations.map((reason) => (
+            <span
+              key={reason}
+              className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs text-amber-700"
+            >
+              <RefreshCw className="h-3 w-3" />
+              {reason}
+            </span>
+          ))}
         </span>
       )}
     </div>

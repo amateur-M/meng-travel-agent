@@ -109,6 +109,15 @@ class TestGraphInvoke:
         assert "total_budget" in bb
         assert "total_spent" in bb
         assert "over_budget" in bb
+        assert "warning_level" in bb
+        assert "spending_ratio" in bb
+
+    def test_weather_swaps_present_in_final(self):
+        state = self._initial_state()
+        result = graph.invoke(state)
+        final = result.get("final_itinerary", {})
+        assert "weather_swaps" in final
+        assert isinstance(final["weather_swaps"], list)
 
     def test_couple_notes_present(self):
         state = self._initial_state()

@@ -4,11 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M3 完成，前端核心 UI 已按页面/组件分层重构，并已接入后端真实 `POST /api/plan` SSE 流；后端测试 148 passed + 1 skipped，真实 QWeather 冒烟测试 1 passed。
+**当前阶段**：M4 完成，预算透明与天气自适应已落地；后端测试 159 passed + 1 skipped，前端 TypeScript 类型检查与 Vite 生产构建通过。
 
 **下一步行动**：
-1. 进入 M4：预算透明与天气自适应
-2. 完成 M4 后进入 M5：节奏控制与情侣向体验
+1. 进入 M5：节奏控制与情侣向体验
+2. 完成 M5 后进入 M6：SSE 流式交互强化
 
 ---
 
@@ -71,6 +71,19 @@
 | 后端联调 | ✅ | 修复 `parse_input` 未包含结束日的天数计算，3 天请求现返回 3 天行程 |
 | 视觉与动效 | ✅ | 暖粉/奶白/淡金、圆角软阴影、Framer Motion stagger、移动端优先 |
 | 验证 | ✅ | TypeScript 类型检查与 Vite 生产构建通过 |
+
+---
+
+## M4 预算透明与天气自适应 (2026-08-31)
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 后端预算核算 | ✅ | `budget_check` 增加 `warning_level`、`spending_ratio`、实际降级与 `downgrade_applied` |
+| 后端天气调整 | ✅ | `adapt_weather` 雨天切室内、高温避正午，并记录 `weather_swaps` |
+| 后端输出归一化 | ✅ | `output_format` 补充 `trip_date`、每日高低温、`daily_cost`、`weather_swaps` |
+| 前端预算预警 | ✅ | 新增 `BudgetAlerts`，预算 90% 黄色提示、超预算展示降级说明 |
+| 前端天气说明 | ✅ | `WeatherBadge`/`Timeline` 展示天气切换原因 |
+| 验证 | ✅ | 后端 159 passed + 1 skipped，前端构建通过 |
 
 ---
 

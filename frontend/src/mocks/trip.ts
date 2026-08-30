@@ -236,6 +236,7 @@ export function createMockPlan(request: TripPlanRequest): TripPlanResponse {
 
   const totalSpent = days.reduce((sum, day) => sum + day.daily_cost, 0);
   const overBudget = totalSpent > request.budget;
+  const spendingRatio = totalSpent / Math.max(request.budget, 1);
 
   return {
     plan_id: `mock-${Date.now()}`,
@@ -247,6 +248,8 @@ export function createMockPlan(request: TripPlanRequest): TripPlanResponse {
       total_spent: totalSpent,
       by_day: days.map((day) => day.daily_cost),
       over_budget: overBudget,
+      warning_level: overBudget ? "over" : spendingRatio >= 0.9 ? "warning" : "ok",
+      spending_ratio: spendingRatio,
       downgrade_applied: overBudget,
       downgrade_notes: overBudget
         ? ["已将晚间酒吧调整为预算内选择", "部分交通动线已改为步行"]
@@ -256,6 +259,15 @@ export function createMockPlan(request: TripPlanRequest): TripPlanResponse {
     couple_notes: [
       "好的旅行不是去很远的地方，而是和你一起，把普通的一天过得很慢。",
       "愿每一阵风、每一场雨，都成为我们故事里的注脚。",
+    ],
+    weather_swaps: [
+      {
+        day_index: 2,
+        original_name: "海舌公园",
+        replacement_name: "附近书店",
+        reason: "小雨，切换室内备选",
+        adjustment_type: "swap",
+      },
     ],
     status: "completed",
   };

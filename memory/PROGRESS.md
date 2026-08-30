@@ -6,7 +6,7 @@
 | M1 | Done | 2026-08-10 | 2026-08-11 | Agent engine core + tests |
 | M2 | Done | 2026-08-11 | 2026-08-16 | External API + LLM integration |
 | M3 | Done | 2026-08-16 | 2026-08-18 | Frontend core UI refactor |
-| M4 | Pending | — | — | Budget + weather |
+| M4 | Done | 2026-08-30 | 2026-08-31 | Budget + weather |
 | M5 | Pending | — | — | Rhythm + couple messages |
 | M6 | Pending | — | — | SSE streaming |
 | M7 | Pending | — | — | Testing + deployment |
@@ -132,6 +132,19 @@
 - [x] Applied warm pink, cream, and gold visual system with mobile-first responsive layout
 - [x] Fixed backend inclusive date-range bug in `parse_input` and updated affected tests
 
+## M4 Completion Checklist (2026-08-31)
+
+- [x] Backend `budget_check` computes `warning_level` and `spending_ratio`
+- [x] Backend `budget_check` applies deterministic downgrades when spending exceeds budget
+- [x] Backend `adapt_weather` swaps rainy outdoor activities for indoor alternatives
+- [x] Backend `adapt_weather` moves >35°C midday outdoor activities to morning or evening
+- [x] Backend `weather_swaps` state carries swap/time-shift reasons to the final response
+- [x] Backend `output_format` enriches day dates, weather high/low, and daily costs
+- [x] Frontend `BudgetAlerts` shows 90% warning and over-budget downgrade notes
+- [x] Frontend `BudgetBar` distinguishes ok / warning / over-budget states
+- [x] Frontend `WeatherBadge` and `Timeline` surface weather-swap reasons
+- [x] Frontend `PlanResult` header shows total budget and spending progress
+
 ## Verification
 
 - npm install succeeded: 166 packages
@@ -140,10 +153,10 @@
 - Backend M2 tools + services + node wiring + multi-provider tested
 - QWeather auth layer tested; real QWeather call verified with credentials
 - vcrpy cassette tests replay external API calls without network access
-- Latest offline test result: 148 passed + 1 skipped
+- Latest offline test result: 159 passed + 1 skipped
 - Latest real QWeather smoke test: 1 passed
 - Frontend M3 TypeScript typecheck passed (`tsc -p tsconfig.app.json` and `tsconfig.node.json`)
-- Frontend M3 Vite production build passed
+- Frontend Vite production build passed
 - Frontend dev server verified on `http://127.0.0.1:5173` with HTTP 200
 - Backend `POST /api/plan` integration verified through Vite proxy and returns SSE `complete`
 - Backend 3-day request verified to return 3 itinerary days after date-range fix
