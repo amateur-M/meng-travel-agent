@@ -153,10 +153,11 @@
 - Backend M2 tools + services + node wiring + multi-provider tested
 - QWeather auth layer tested; real QWeather call verified with credentials
 - vcrpy cassette tests replay external API calls without network access
-- Latest offline test result: 159 passed + 1 skipped
+- Latest offline test result: 157 passed + 1 skipped
 - Latest real QWeather smoke test: 1 passed
 - Frontend M3 TypeScript typecheck passed (`tsc -p tsconfig.app.json` and `tsconfig.node.json`)
 - Frontend Vite production build passed
 - Frontend dev server verified on `http://127.0.0.1:5173` with HTTP 200
 - Backend `POST /api/plan` integration verified through Vite proxy and returns SSE `complete`
 - Backend 3-day request verified to return 3 itinerary days after date-range fix
+- Real end-to-end graph verified with live Amap + QWeather + Qwen (2-day Dali plan)

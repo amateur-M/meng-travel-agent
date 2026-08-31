@@ -56,7 +56,8 @@ class AgentState(TypedDict, total=False):
     current_phase: Annotated[str, _latest_str]
     #   Human-readable label for the active pipeline stage (used for SSE).
     #   Uses _latest_str reducer so parallel nodes don't collide.
-    error: str
-    #   Non-empty signals a recoverable or terminal problem.
+    error: Annotated[str, _latest_str]
+    #   Non-empty signals a recoverable or terminal problem. Uses _latest_str
+    #   so parallel fetchers (weather/poi/food) can write without colliding.
     retry_count: int
     #   Budget-retry counter; capped at 2 to prevent infinite loops.

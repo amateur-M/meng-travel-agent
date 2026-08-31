@@ -2,12 +2,52 @@
 
 import pytest
 from datetime import date, timedelta
+from unittest.mock import patch
 
 from agents.state import AgentState
 from agents.nodes.parse_input import parse_input
 from agents.nodes.fetch_weather import fetch_weather
 from agents.nodes.search_poi import search_poi
 from agents.nodes.search_food import search_food
+
+
+RAW_ATTRACTIONS = [
+    {
+        "name": "大理古城",
+        "typecode": "110202",
+        "type": "风景名胜;风景名胜;国家级景点",
+        "address": "大理市复兴路111号",
+        "business_area": "大理古城",
+        "location": "100.1620,25.6833",
+        "biz_ext": {"rating": "4.7", "cost": []},
+        "keytag": "国家级景点",
+        "photos": [],
+    },
+    {
+        "name": "大理州博物馆",
+        "typecode": "140100",
+        "type": "科教文化服务;博物馆;博物馆",
+        "address": "大理市下关洱河南路",
+        "business_area": "下关",
+        "location": "100.2200,25.6000",
+        "biz_ext": {"rating": "4.5"},
+        "photos": [],
+    },
+]
+
+
+RAW_RESTAURANTS = [
+    {
+        "name": "古城人家",
+        "typecode": "050100",
+        "type": "餐饮服务;中餐厅;中餐厅",
+        "address": "大理市人民路",
+        "business_area": "大理古城",
+        "location": "100.1620,25.6833",
+        "biz_ext": {"cost": "80.00", "rating": "4.6"},
+        "keytag": "本地老店",
+    },
+]
 
 
 def _min_state(overrides: dict | None = None) -> AgentState:
@@ -118,29 +158,34 @@ class TestSearchPoi:
             "parsed_params": {"destination": "Dali", "preferences": ["romantic"]},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_poi(state)
+        with patch("services.amap.search_pois", return_value=RAW_ATTRACTIONS):
+            result = search_poi(state)
         pois = result["poi_list"]
         assert len(pois) >= 2
         assert result["current_phase"] == "search_poi"
+        assert result["error"] == ""
 
     def test_each_poi_has_expected_keys(self):
         state: AgentState = {
             "parsed_params": {"destination": "Dali", "preferences": []},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_poi(state)
+        with patch("services.amap.search_pois", return_value=RAW_ATTRACTIONS):
+            result = search_poi(state)
         for poi in result["poi_list"]:
             assert "name" in poi
             assert "type" in poi
             assert "rating" in poi or "couple_score" in poi
 
-    def test_unknown_city_fallback(self):
+    def test_sets_error_when_amap_fails(self):
         state: AgentState = {
-            "parsed_params": {"destination": "NowhereCity", "preferences": []},
+            "parsed_params": {"destination": "Dali", "preferences": []},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_poi(state)
-        assert len(result["poi_list"]) >= 2
+        with patch("services.amap.search_pois", side_effect=RuntimeError("no key")):
+            result = search_poi(state)
+        assert result["poi_list"] == []
+        assert "景点搜索失败" in result["error"]
 
 
 class TestSearchFood:
@@ -150,17 +195,20 @@ class TestSearchFood:
             "parsed_params": {"destination": "Dali", "budget": 5000, "num_days": 2},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_food(state)
+        with patch("services.amap.search_pois", return_value=RAW_RESTAURANTS):
+            result = search_food(state)
         foods = result["food_list"]
         assert len(foods) >= 1
         assert result["current_phase"] == "search_food"
+        assert result["error"] == ""
 
     def test_each_food_has_expected_keys(self):
         state: AgentState = {
             "parsed_params": {"destination": "Dali", "budget": 5000, "num_days": 2},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_food(state)
+        with patch("services.amap.search_pois", return_value=RAW_RESTAURANTS):
+            result = search_food(state)
         for food in result["food_list"]:
             assert "name" in food
             assert "cuisine" in food
@@ -171,5 +219,6 @@ class TestSearchFood:
             "parsed_params": {"destination": "Lijiang", "budget": 5000, "num_days": 2},
             "current_phase": "", "error": "", "retry_count": 0,
         }
-        result = search_food(state)
+        with patch("services.amap.search_pois", return_value=RAW_RESTAURANTS):
+            result = search_food(state)
         assert len(result["food_list"]) >= 1

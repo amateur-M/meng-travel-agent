@@ -22,7 +22,8 @@ meng-travel-agent/
 │   ├── services/                    # 业务服务层（M2 新增）
 │   │   ├── __init__.py
 │   │   ├── llm.py                   # LLM 统一调用入口 + mock fallback
-│   │   └── qweather_auth.py         # QWeather JWT/API Key 鉴权
+│   │   ├── qweather_auth.py         # QWeather JWT/API Key 鉴权
+│   │   └── amap.py                  # 高德地图真实 POI/餐厅/路线服务
 │   ├── agents/                      # LangGraph Agent 引擎
 │   │   ├── __init__.py
 │   │   ├── state.py                 # AgentState TypedDict 定义
@@ -121,10 +122,8 @@ meng-travel-agent/
 │       │   └── uiStore.ts           # 主题 / 动画状态
 │       ├── types/
 │       │   └── trip.ts              # 前端行程类型定义
-│       ├── config/
-│       │   └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
-│       └── mocks/
-│           └── trip.ts              # Mock 行程数据
+│       └── config/
+│           └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
 │
 ├── docker-compose.yml               # Docker 编排
 ├── .gitignore                       # Git 忽略规则
@@ -178,7 +177,6 @@ meng-travel-agent/
 |------|------|
 | `frontend/src/types/trip.ts` | 行程请求 / 响应、活动、预算、天气、进度类型 |
 | `frontend/src/config/tripOptions.ts` | 出发地 / 目的地 / 偏好 / 节奏选项 |
-| `frontend/src/mocks/trip.ts` | 动态 Mock 行程与预算数据 |
 | `frontend/src/services/api.ts` | Axios 实例 + 响应错误归一化 |
 | `frontend/src/services/sse.ts` | SSE 连接管理与事件分发 |
 | `frontend/src/stores/tripStore.ts` | 表单 / 行程 / 预算 / 规划进度状态 |
@@ -193,6 +191,21 @@ meng-travel-agent/
 | `frontend/src/components/WeatherBadge/` | 晴 / 雨 / 高温天气标识 |
 | `frontend/src/components/CoupleQuote/` | 情侣共情文案气泡 |
 | `frontend/src/components/SSEProgress/` | Agent 思考过程可视化 |
+
+## M4 真实数据接入 (2026-08-31)
+
+| 文件 | 说明 |
+|------|------|
+| `backend/services/amap.py` | 高德 Web Service：POI 搜索、驾车路线，城市 adcode 映射 |
+| `backend/tools/poi_search_tool.py` | 替换本地 mock 数据库，实时查询高德景点/博物馆 |
+| `backend/tools/food_search_tool.py` | 替换本地 mock 数据库，实时查询高德餐饮 |
+| `backend/tools/maps_tool.py` | 替换 Haversine 估算，使用高德真实驾车路线 |
+| `backend/agents/nodes/search_poi.py` | 移除通用假数据兜底，失败时写入 error |
+| `backend/agents/nodes/search_food.py` | 移除通用假数据兜底，失败时写入 error |
+
+## 已删除 mock 文件
+
+- `frontend/src/mocks/trip.ts`（无引用的离线预览 mock）
 
 ## M4 新增 / 调整文件清单 (2026-08-31)
 

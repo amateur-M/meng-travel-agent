@@ -162,3 +162,14 @@
 - The frontend can distinguish `<90%`, `90%–100%`, and `>100%` without duplicating threshold logic
 - `spending_ratio` keeps the API useful for future budget charts and progress indicators
 - The existing boolean `over_budget` is retained for backward compatibility and fast conditional checks
+
+### 18. POI, Restaurant, and Route Data Come From Amap
+
+**Decision**: Replace the local `_MOCK_POI`, `_MOCK_FOOD`, and haversine route estimates with live Amap Web Service calls through `services/amap.py`.
+
+**Rationale**:
+- The previous databases only covered five destinations and went stale by definition
+- Amap supplies real attractions, museums, restaurants, ratings, per-person costs, and driving routes for every supported destination
+- A stable GB/T 2260 `CITY_ADCODE` map keeps the `place/text` `city` parameter reliable without depending on the geocoding service, which is not enabled for the current key
+- Normalisation in the tools preserves the schema consumed by downstream nodes, so the graph contract does not change
+- Search failures now surface through `AgentState.error` instead of silently substituting fake results

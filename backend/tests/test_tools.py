@@ -19,6 +19,55 @@ from tools.food_search_tool import food_search_tool
 from tools.maps_tool import maps_tool
 
 
+RAW_ATTRACTIONS = [
+    {
+        "name": "大理古城",
+        "typecode": "110202",
+        "type": "风景名胜;风景名胜;国家级景点",
+        "address": "大理市复兴路111号",
+        "business_area": "大理古城",
+        "location": "100.1620,25.6833",
+        "biz_ext": {"rating": "4.7", "cost": []},
+        "keytag": "国家级景点",
+        "photos": [],
+    },
+    {
+        "name": "大理州博物馆",
+        "typecode": "140100",
+        "type": "科教文化服务;博物馆;博物馆",
+        "address": "大理市下关洱河南路",
+        "business_area": "下关",
+        "location": "100.2200,25.6000",
+        "biz_ext": {"rating": "4.5"},
+        "photos": [],
+    },
+]
+
+
+RAW_RESTAURANTS = [
+    {
+        "name": "古城人家",
+        "typecode": "050100",
+        "type": "餐饮服务;中餐厅;中餐厅",
+        "address": "大理市人民路",
+        "business_area": "大理古城",
+        "location": "100.1620,25.6833",
+        "biz_ext": {"cost": "80.00", "rating": "4.6"},
+        "keytag": "本地老店",
+    },
+    {
+        "name": "海景火锅",
+        "typecode": "050100",
+        "type": "餐饮服务;火锅店;火锅店",
+        "address": "大理市双廊镇",
+        "business_area": "双廊",
+        "location": "100.2000,25.9000",
+        "biz_ext": {"cost": "120.00", "rating": "4.4"},
+        "keytag": "火锅",
+    },
+]
+
+
 # ── weather_tool_sync ────────────────────────────────────────────
 
 class TestWeatherToolSync:
@@ -155,95 +204,107 @@ class TestQWeather:
 # ── poi_search_tool ──────────────────────────────────────────────
 
 class TestPoiSearchTool:
-    """poi_search_tool returns a JSON string of POI list."""
+    """poi_search_tool normalises live Amap attractions."""
 
-    def test_known_city_returns_pois(self):
-        result = json.loads(poi_search_tool.invoke({"city": "大理", "preferences": ""}))
-        assert isinstance(result, list)
-        assert len(result) >= 5
-        assert "name" in result[0]
-        assert "couple_score" in result[0]
+    def _search(self, preferences=""):
+        with patch("services.amap.search_pois", return_value=RAW_ATTRACTIONS):
+            return json.loads(
+                poi_search_tool.invoke({"city": "大理", "preferences": preferences})
+            )
 
-    def test_preferences_filter_results(self):
-        all_pois = json.loads(poi_search_tool.invoke({"city": "三亚", "preferences": ""}))
-        romantic_pois = json.loads(poi_search_tool.invoke({"city": "三亚", "preferences": "浪漫"}))
-        # Filtered should not exceed unfiltered
-        assert len(romantic_pois) <= len(all_pois)
+    def test_returns_normalised_pois(self):
+        pois = self._search()
+        assert len(pois) == 2
+        assert pois[0]["name"] == "大理古城"
+        assert "couple_score" in pois[0]
 
-    def test_unknown_city_fallback(self):
-        result = json.loads(poi_search_tool.invoke({"city": "NowhereLand", "preferences": ""}))
-        assert len(result) >= 2
+    def test_preferences_boost_matching_type(self):
+        pois = self._search(preferences="文化")
+        assert pois[0]["type"] == "文化"
 
-    def test_poi_has_required_fields(self):
-        result = json.loads(poi_search_tool.invoke({"city": "成都", "preferences": "浪漫,自然"}))
-        for poi in result:
-            assert "name" in poi
-            assert "type" in poi
-            assert "couple_score" in poi
-            assert "indoor" in poi
-            assert "cost" in poi
+    def test_poi_has_expected_keys(self):
+        for poi in self._search(preferences="浪漫,自然"):
+            for key in [
+                "name",
+                "type",
+                "rating",
+                "cost",
+                "location",
+                "indoor",
+                "couple_score",
+                "duration_min",
+                "description",
+            ]:
+                assert key in poi
 
 
 # ── food_search_tool ─────────────────────────────────────────────
 
 class TestFoodSearchTool:
-    """food_search_tool returns a JSON string of restaurant list."""
+    """food_search_tool normalises live Amap restaurants."""
 
-    def test_known_city_returns_restaurants(self):
-        result = json.loads(food_search_tool.invoke({
-            "city": "大理", "cuisine": "", "budget_per_person": 0,
-        }))
-        assert isinstance(result, list)
-        assert len(result) >= 3
-        assert "name" in result[0]
-        assert "cuisine" in result[0]
+    def _search(self, cuisine="不限", budget_per_person=0):
+        with patch("services.amap.search_pois", return_value=RAW_RESTAURANTS):
+            return json.loads(
+                food_search_tool.invoke({
+                    "city": "大理",
+                    "cuisine": cuisine,
+                    "budget_per_person": budget_per_person,
+                })
+            )
+
+    def test_returns_normalised_restaurants(self):
+        foods = self._search()
+        assert len(foods) == 2
+        names = {food["name"] for food in foods}
+        assert names == {"古城人家", "海景火锅"}
+        by_name = {food["name"]: food for food in foods}
+        assert by_name["古城人家"]["cuisine"] == "中餐"
+        assert by_name["古城人家"]["avg_cost"] == 80.0
+        assert isinstance(by_name["古城人家"]["atmosphere"], list)
 
     def test_budget_filter_strict(self):
-        # All results must be within budget
-        result = json.loads(food_search_tool.invoke({
-            "city": "大理", "cuisine": "", "budget_per_person": 50,
-        }))
-        for r in result:
-            assert r["avg_cost"] <= 50
+        foods = self._search(budget_per_person=90)
+        assert len(foods) == 1
+        assert all(food["avg_cost"] <= 90 for food in foods)
 
     def test_cuisine_search_prefers_match(self):
-        result = json.loads(food_search_tool.invoke({
-            "city": "三亚", "cuisine": "海鲜", "budget_per_person": 0,
-        }))
-        assert len(result) >= 1
-
-    def test_restaurant_has_atmosphere(self):
-        result = json.loads(food_search_tool.invoke({
-            "city": "大理", "cuisine": "", "budget_per_person": 0,
-        }))
-        for r in result:
-            assert "atmosphere" in r
-            assert isinstance(r["atmosphere"], list)
+        foods = self._search(cuisine="火锅")
+        assert foods[0]["cuisine"] == "火锅"
 
 
 # ── maps_tool ────────────────────────────────────────────────────
 
 class TestMapsTool:
-    """maps_tool returns JSON string with route plan."""
+    """maps_tool returns a real Amap driving route."""
+
+    def _route(self, coordinates):
+        with patch(
+            "services.amap.driving_route",
+            return_value={"distance": "12115", "duration": "1264"},
+        ):
+            return json.loads(maps_tool.invoke({"coordinates": coordinates}))
 
     def test_two_points_returns_route(self):
         coords = json.dumps([
             {"name": "A", "lat": 25.6, "lng": 100.2},
             {"name": "B", "lat": 25.7, "lng": 100.3},
         ])
-        result = json.loads(maps_tool.invoke({"coordinates": coords}))
+        result = self._route(coords)
         assert result["route"] == ["A", "B"]
         assert len(result["segments"]) == 1
-        assert result["total_distance_km"] > 0
+        assert result["segments"][0]["distance_km"] == 12.1
+        assert result["segments"][0]["drive"]["duration_min"] == 21
 
-    def test_multiple_points_greedy_order(self):
+    def test_multiple_points_order(self):
         coords = json.dumps([
             {"name": "Erhai", "lat": 25.6065, "lng": 100.2299},
             {"name": "Old Town", "lat": 25.6833, "lng": 100.1620},
             {"name": "Cangshan", "lat": 25.6544, "lng": 100.1246},
         ])
-        result = json.loads(maps_tool.invoke({"coordinates": coords}))
+        result = self._route(coords)
         assert len(result["route"]) == 3
+        assert len(result["segments"]) == 2
         assert "Erhai" in result["route"]
 
     def test_single_point_no_segments(self):
@@ -252,15 +313,14 @@ class TestMapsTool:
         assert result["route"] == ["Solo"]
         assert result["segments"] == []
 
-    def test_transit_modes_present(self):
+    def test_drive_mode_present(self):
         coords = json.dumps([
             {"name": "A", "lat": 25.6, "lng": 100.2},
             {"name": "B", "lat": 25.7, "lng": 100.3},
         ])
-        result = json.loads(maps_tool.invoke({"coordinates": coords}))
+        result = self._route(coords)
         seg = result["segments"][0]
         assert "drive" in seg
-        assert "transit" in seg
         assert "duration_min" in seg["drive"]
 
     def test_invalid_json_returns_error(self):
