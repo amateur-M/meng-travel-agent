@@ -96,6 +96,23 @@ class TestActivity:
         assert a.estimated_cost == 160
         assert a.location == "大理古城人民路"
 
+    def test_type_keyword_works(self):
+        """P8: field renamed to `type`; both `type=` and `activity_type=` accepted."""
+        a = Activity(name="洱海骑行", type=ActivityType.outdoor, period=Period.morning)
+        assert a.type == ActivityType.outdoor
+
+    def test_model_dump_uses_type_key(self):
+        """P8: serialised output uses `type` (not `activity_type`) to match frontend."""
+        a = Activity(name="古城漫步", type=ActivityType.sightseeing, period=Period.morning)
+        dumped = a.model_dump(mode="json")
+        assert "type" in dumped
+        assert dumped["type"] == "景点"
+
+    def test_nature_type_accepted(self):
+        """P8: '自然' is a valid ActivityType produced by poi_search_tool."""
+        a = Activity(name="洱海", type=ActivityType.nature, period=Period.morning)
+        assert a.type == ActivityType.nature
+
 
 class TestDayPlan:
     """DayPlan model validation."""

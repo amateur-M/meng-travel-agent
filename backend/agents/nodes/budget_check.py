@@ -1,15 +1,15 @@
-﻿"""budget_check — Validate draft itinerary against budget and generate downgrades.
+"""budget_check — Validate draft itinerary against budget and generate downgrades.
 
-M2: when over budget, calls LLM via services.llm with the
-BUDGET_DOWNGRADE_PROMPT to generate smart downgrade suggestions.
-Falls back to simple note-based downgrade when API key is absent.
+M4: applies a deterministic in-place downgrade when over budget.
+P6: removed retry_count mechanism and BUDGET_CHECK_PROMPT import — the
+conditional retry loop in graph.py was unreachable dead code after M4.
 """
 
 import copy
 from typing import Dict, Any
 
 from agents.state import AgentState
-from prompts import BUDGET_CHECK_PROMPT, BUDGET_DOWNGRADE_PROMPT
+from prompts import BUDGET_DOWNGRADE_PROMPT, fill_prompt
 from services.llm import call_llm
 
 
@@ -202,22 +202,21 @@ def _format_itinerary_summary(draft: dict) -> str:
     return "\n".join(lines)
 
 
-def _fill_prompt(template: str, **kwargs) -> str:
-    """Fill template placeholders using str.replace to avoid JSON brace conflicts."""
-    result = template
-    for key, val in kwargs.items():
-        result = result.replace("{" + key + "}", str(val))
-    return result
+# Tidy: _fill_prompt removed — now imported as fill_prompt from prompts package.
 
 
 def budget_check(state: AgentState) -> Dict[str, Any]:
-    """Audit the draft itinerary's spending against the total budget."""
+    """Audit the draft itinerary's spending against the total budget.
+
+    P6: retry_count removed — the conditional retry loop in graph.py was
+    unreachable after M4 made budget_check always apply a deterministic
+    in-place downgrade.  The node now simply downgrades and moves on.
+    """
     params = state.get("parsed_params", {})
     draft = state.get("draft_itinerary", {})
     budget = params.get("budget", 3000)
     total_spent = _sum_costs(draft)
     original_spent = total_spent
-    retry_count = state.get("retry_count", 0)
 
     downgrade_notes: list = []
     downgrade_suggestions: list = []
@@ -232,7 +231,7 @@ def budget_check(state: AgentState) -> Dict[str, Any]:
             budget,
         )
 
-        downgrade_prompt = _fill_prompt(
+        downgrade_prompt = fill_prompt(
             BUDGET_DOWNGRADE_PROMPT,
             budget=budget,
             current_spent=original_spent,
@@ -286,12 +285,7 @@ def budget_check(state: AgentState) -> Dict[str, Any]:
     over = total_spent > budget
     ratio = total_spent / budget if budget > 0 else 0.0
 
-    next_retry_count = retry_count
-    if original_spent > budget:
-        # Once a deterministic downgrade plan has been applied, avoid looping
-        # back to plan_itinerary and undoing the substitutions.
-        next_retry_count = max(2, retry_count + 1)
-
+    # P6: retry_count removed — the conditional retry loop was dead code.
     return {
         "draft_itinerary": draft,
         "budget_breakdown": {
@@ -305,6 +299,5 @@ def budget_check(state: AgentState) -> Dict[str, Any]:
             "downgrade_notes": downgrade_notes,
         },
         "downgrade_suggestions": downgrade_suggestions,
-        "retry_count": next_retry_count,
         "current_phase": "budget_check",
     }

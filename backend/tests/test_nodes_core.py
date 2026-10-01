@@ -1,4 +1,4 @@
-﻿"""Tests for core logic nodes: plan_itinerary, budget_check, adapt_weather."""
+"""Tests for core logic nodes: plan_itinerary, budget_check, adapt_weather."""
 
 import pytest
 
@@ -34,7 +34,7 @@ def _full_input_state(destination="Dali", budget=5000, days=3, preferences=None)
         "preferences": preferences or ["romantic", "food"],
         "pace": "relaxed",
     }
-    state: AgentState = {"user_input": user, "current_phase": "start", "error": "", "retry_count": 0}
+    state: AgentState = {"user_input": user, "current_phase": "start", "error": "", "warnings": [], "retry_count": 0}
     state.update(parse_input(state))
     state.update(fetch_weather(state))
     state.update(search_poi(state))
@@ -91,7 +91,7 @@ class TestBudgetCheck:
         state.update(plan_itinerary(state))
         result = budget_check(state)
         assert result["budget_breakdown"]["over_budget"] is False
-        assert result["retry_count"] == 0
+        # P6: retry_count assertion removed
 
     def test_over_budget_triggers_downgrade(self):
         state = _full_input_state(budget=1)
@@ -99,7 +99,7 @@ class TestBudgetCheck:
         result = budget_check(state)
         assert result["budget_breakdown"]["downgrade_applied"] is True
         assert result["budget_breakdown"]["over_budget"] is False
-        assert result["retry_count"] >= 1
+        # P6: retry_count assertion removed
 
     def test_budget_breakdown_structure(self):
         state = _full_input_state(budget=5000)

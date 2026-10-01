@@ -1,4 +1,4 @@
-﻿"""Unit tests for LangChain Tools (M2)."""
+"""Unit tests for LangChain Tools (M2)."""
 
 import json
 import pytest
@@ -8,7 +8,6 @@ from unittest.mock import patch, MagicMock
 from config.settings import settings
 from tools.weather_tool import (
     weather_tool_sync,
-    _parse_qweather_daily,
     _parse_qweather_v1_daily,
     _forecast_days,
     _qweather_headers,
@@ -156,34 +155,7 @@ class TestQWeather:
             assert _qweather_headers() == {"Authorization": "Bearer test-jwt"}
             mock_headers.assert_called_once_with(settings)
 
-    def test_parse_qweather_daily_basic(self):
-        daily = [
-            {"fxDate": "2026-09-01", "textDay": "晴", "textNight": "多云",
-             "tempMax": "30", "tempMin": "20", "humidity": "55",
-             "windDirDay": "西南风", "windScaleDay": "3-4"},
-            {"fxDate": "2026-09-02", "textDay": "小雨", "textNight": "阴",
-             "tempMax": "26", "tempMin": "18", "humidity": "80",
-             "windDirDay": "东风", "windScaleDay": "2"},
-        ]
-        result = _parse_qweather_daily(daily, "2026-09-01", "2026-09-02")
-        assert "2026-09-01" in result
-        assert result["2026-09-01"]["source"] == "qweather"
-        assert result["2026-09-01"]["condition"] == "晴"
-        assert result["2026-09-01"]["high"] == 30.0
-        assert result["2026-09-02"]["condition_en"] == "rain"
-
-    def test_parse_qweather_daily_filters_out_of_range(self):
-        daily = [
-            {"fxDate": "2026-08-01", "textDay": "晴", "tempMax": "30", "tempMin": "20"},
-            {"fxDate": "2026-09-02", "textDay": "多云", "tempMax": "26", "tempMin": "18"},
-        ]
-        result = _parse_qweather_daily(daily, "2026-09-01", "2026-09-02")
-        assert "2026-08-01" not in result
-        assert "2026-09-02" in result
-
-    def test_parse_qweather_daily_empty_raises(self):
-        with pytest.raises(ValueError):
-            _parse_qweather_daily([], "2026-09-01", "2026-09-02")
+    # Tidy: _parse_qweather_daily tests removed — function was dead code.
 
     def test_sync_routes_to_qweather(self):
         fake = {"2026-09-01": {"condition": "晴", "source": "qweather"}}

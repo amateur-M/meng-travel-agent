@@ -1,23 +1,22 @@
-﻿"""add_couple_touch — Attach romantic couple messages to each activity.
+"""add_couple_touch — Attach romantic couple messages to each activity.
 
-M2: tries LLM-powered message generation via COUPLE_COPY_PROMPT
-for richer emotional variety. Falls back to M1 template bank.
+P7 fix: generates all messages in a single batch LLM call instead of one
+call per activity, reducing latency from O(activities) to O(1).
+Falls back to the M1 template bank when no API key is configured.
 """
 
 import json
+import logging
 from typing import Dict, Any, List
 
 from agents.state import AgentState
-from prompts import COUPLE_MESSAGE_PROMPT, COUPLE_COPY_PROMPT
 from services.llm import call_llm
 
+logger = logging.getLogger("coupletrip")
 
-def _fill_prompt(template: str, **kwargs) -> str:
-    """Fill template placeholders using str.replace (avoids JSON {} conflict)."""
-    result = template
-    for key, val in kwargs.items():
-        result = result.replace("{" + key + "}", str(val))
-    return result
+
+# Tidy: _fill_prompt removed — was unused after P7 batch rewrite.
+# COUPLE_COPY_PROMPT import removed — batch prompt is built inline.
 
 
 # ── Message templates by activity type (M1 fallback) ─────────────
@@ -69,50 +68,95 @@ def _pick_message(act_name: str, act_type: str) -> str:
     return template.format(name=act_name)
 
 
-def _generate_llm_message(destination: str, act_name: str, act_type: str, period: str, weather: str) -> str | None:
-    """Try to generate a couple message via LLM. Returns None on failure."""
-    prompt = _fill_prompt(
-        COUPLE_COPY_PROMPT,
-        destination=destination,
-        activity_name=act_name,
-        activity_type=act_type,
-        period=period,
-        weather_condition=weather,
+def _trim_message(text: str) -> str | None:
+    """Enforce the 6–25 character constraint; return None if too short."""
+    if len(text) > 25:
+        for sep in ("。", "，", ".", ","):
+            idx = text[:25].rfind(sep)
+            if idx > 8:
+                text = text[:idx + 1]
+                break
+        else:
+            text = text[:25]
+    return text if len(text) >= 6 else None
+
+
+def _generate_batch_llm_messages(
+    destination: str,
+    activities_meta: List[dict],
+) -> List[str | None]:
+    """P7: generate couple messages for ALL activities in one LLM call.
+
+    Returns a list parallel to *activities_meta*: each element is the
+    generated message, or None when the LLM could not produce one.
+    Returns a list of Nones when no API key is configured.
+    """
+    n = len(activities_meta)
+    if n == 0:
+        return []
+
+    fallback: List[str | None] = [None] * n
+    act_list_str = json.dumps(activities_meta, ensure_ascii=False)
+
+    prompt = (
+        f"为以下 {n} 个旅行活动各生成一句情侣寄语（6-25字，温暖真挚，不油腻）。\n"
+        f"目的地：{destination}\n\n"
+        f"活动清单：\n{act_list_str}\n\n"
+        "请严格按 JSON 数组格式返回，每项包含 id 和 message 字段：\n"
+        '[{"id": 0, "message": "..."}, {"id": 1, "message": "..."}]\n'
+        f"数量必须为 {n} 条，id 与活动清单中的 id 一一对应。"
     )
+
     try:
         result = call_llm(
-            system_prompt="你是一个温柔细腻的情感文案写手。请直接输出一句情侣寄语，不要加任何前缀或后缀。",
+            system_prompt=(
+                "你是一个温柔细腻的情感文案写手。"
+                "请严格按照 JSON 数组格式返回结果，不要添加任何前缀或后缀。"
+            ),
             user_prompt=prompt,
-            mock_response={},
+            mock_response={},   # empty dict signals "no LLM" → all None
         )
-        text = result.get("message", result.get("text", ""))
-        if text:
-            # Ensure 8-25 chars
-            if len(text) > 25:
-                # Try to find last complete clause
-                for sep in ("。", "，", ".", ","):
-                    idx = text[:25].rfind(sep)
-                    if idx > 8:
-                        text = text[:idx + 1]
-                        break
-                else:
-                    text = text[:25]
-            if len(text) >= 6:
-                return text
+
+        # Normalise: accept a raw list or a dict with a "messages"/"results" key
+        items: list = (
+            result
+            if isinstance(result, list)
+            else result.get("messages", result.get("results", []))
+        )
+        if not isinstance(items, list):
+            return fallback
+
+        messages: List[str | None] = [None] * n
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            idx = item.get("id", -1)
+            raw = str(item.get("message", "")).strip()
+            if 0 <= idx < n and raw:
+                messages[idx] = _trim_message(raw)
+        return messages
+
     except Exception:
-        pass
-    return None
+        # P10: log instead of swallowing silently
+        logger.warning(
+            "Batch LLM couple-message generation failed for %d activities; "
+            "falling back to template bank",
+            n,
+            exc_info=True,
+        )
+        return fallback
 
 
 def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     """Append a couple_note to every activity in the draft itinerary.
 
-    M2: tries LLM-generated messages first via COUPLE_COPY_PROMPT.
-    Falls back to M1 template bank when API key is absent.
+    P7: makes a single batch LLM call for all activities instead of one
+    call per activity.  Falls back to the M1 template bank when the LLM
+    is unavailable or returns incomplete results.
 
     Returns:
         Partial state with draft_itinerary activities enriched,
-        and couple_notes list populated.
+        and couple_notes list populated (first note per day).
     """
     params = state.get("parsed_params", {})
     destination = params.get("destination", "")
@@ -120,29 +164,44 @@ def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     draft = state.get("draft_itinerary", {})
     all_notes: List[str] = []
 
-    for day_data in draft.get("days", []):
-        day_idx = day_data.get("day_index", 0)
-        date_key = list(weather.keys())[day_idx] if day_idx < len(weather) else ""
+    weather_keys = list(weather.keys())
+
+    # ── Phase 1: flatten all activities into a meta list ──────────
+    # Each entry: (day_idx, act_ref, weather_condition)
+    flat: List[tuple] = []
+    activities_meta: List[dict] = []
+
+    for day_idx, day_data in enumerate(draft.get("days", [])):
+        date_key = weather_keys[day_idx] if day_idx < len(weather_keys) else ""
         w = weather.get(date_key, {})
-        day_notes: List[str] = []
+        condition = w.get("condition", "晴")
 
         for act in day_data.get("activities", []):
-            act_name = act["name"]
-            act_type = act.get("type", "景点")
-            period = act.get("period", "上午")
+            i = len(flat)
+            flat.append((day_idx, act))
+            activities_meta.append({
+                "id": i,
+                "name": act["name"],
+                "type": act.get("type", "景点"),
+                "period": act.get("period", "上午"),
+                "weather": condition,
+            })
 
-            # Try LLM first
-            note = _generate_llm_message(
-                destination, act_name, act_type, period, w.get("condition", "晴")
-            )
-            if note is None:
-                note = _pick_message(act_name, act_type)
+    # ── Phase 2: single batch LLM call (P7) ────────────────────────
+    llm_messages = _generate_batch_llm_messages(destination, activities_meta)
 
-            act["couple_note"] = note
-            day_notes.append(note)
+    # ── Phase 3: assign messages, falling back to templates ────────
+    for i, (day_idx, act) in enumerate(flat):
+        note = llm_messages[i] if i < len(llm_messages) else None
+        if note is None:
+            note = _pick_message(act["name"], act.get("type", "景点"))
+        act["couple_note"] = note
 
-        if day_notes:
-            all_notes.append(day_notes[0])
+    # ── Phase 4: collect first note per day ───────────────────────
+    for day_data in draft.get("days", []):
+        activities = day_data.get("activities", [])
+        if activities:
+            all_notes.append(activities[0].get("couple_note", ""))
 
     return {
         "draft_itinerary": draft,

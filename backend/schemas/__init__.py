@@ -4,7 +4,7 @@ from datetime import date as DateType, time
 from enum import Enum
 from typing import Optional, List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # ── Enums ────────────────────────────────────────────────────────
@@ -29,6 +29,10 @@ class ActivityType(str, Enum):
     culture = "文化"
     adventure = "冒险"
     rest = "留白"
+    # P8: added missing types produced by poi_search_tool / _mock_itinerary
+    nature = "自然"
+    humanities = "人文"
+    trendy = "网红"
 
 
 # ── Request ──────────────────────────────────────────────────────
@@ -51,10 +55,22 @@ class TripPlanRequest(BaseModel):
 # ── Core Models ──────────────────────────────────────────────────
 
 class Activity(BaseModel):
-    """A single activity within a day's schedule."""
+    """A single activity within a day's schedule.
+
+    P8: field renamed from ``activity_type`` to ``type`` to match the key
+    actually produced by graph nodes and consumed by the frontend.
+    ``populate_by_name=True`` allows both ``type=`` and ``activity_type=``
+    for backward compatibility with existing test fixtures.
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
 
     name: str = Field(..., description="活动名称，如 '洱海骑行'")
-    activity_type: ActivityType = Field(..., description="活动类型")
+    type: ActivityType = Field(
+        ...,
+        alias="activity_type",
+        description="活动类型",
+    )
     period: Period = Field(..., description="所属时段")
     start_time: Optional[str] = Field(None, description="开始时间 HH:MM")
     duration_min: int = Field(default=60, description="预估耗时（分钟）")

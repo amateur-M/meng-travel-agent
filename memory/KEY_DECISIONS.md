@@ -71,11 +71,13 @@
 
 
 
-### 8. Graph Topology: Conditional Edge for Budget Retry
+### 8. Graph Topology: Conditional Edge for Budget Retry (SUPERSEDED — see #19)
 
-**Decision**: budget_check → plan_itinerary uses a conditional edge (not a fixed loop).
+> **Superseded 2026-10-01 (P6).** The conditional retry edge was unreachable dead code once M4 moved budget handling to an in-place deterministic downgrade. `_route_after_budget`, the conditional edge, and `retry_count` were removed; `budget_check → adapt_weather` is now a plain direct edge. See decision #19.
 
-**Rationale**:
+**Decision (historical)**: budget_check → plan_itinerary used a conditional edge (not a fixed loop).
+
+**Rationale (historical)**:
 - Budget may be exceeded multiple times after adjustment; a conditional edge with a router function (`_route_after_budget`) checks `over_budget` AND `retry_count < 2` before looping back
 - Capping at 2 retries prevents infinite loops from irreconcilable budgets
 - When budget is acceptable (or retries exhausted), the edge routes to `adapt_weather`
@@ -142,7 +144,7 @@
 **Rationale**:
 - The M1 budget-retry loop regenerated the itinerary but could silently leave the final plan over budget
 - A deterministic POI/restaurant replacement guarantees that the returned plan matches the transparent budget state
-- Once a downgrade is applied, `_route_after_budget` routes straight to `adapt_weather` so regenerating the draft does not undo the savings
+- Once a downgrade is applied the flow proceeds straight to `adapt_weather` so regenerating the draft does not undo the savings (the former `_route_after_budget` router was removed in P6 — see decision #19)
 - The LLM remains useful for richer reasoning, but it is treated as an optional enhancement rather than a correctness dependency
 
 ### 16. Weather Adjustments Are Returned As Structured Events
@@ -173,3 +175,47 @@
 - A stable GB/T 2260 `CITY_ADCODE` map keeps the `place/text` `city` parameter reliable without depending on the geocoding service, which is not enabled for the current key
 - Normalisation in the tools preserves the schema consumed by downstream nodes, so the graph contract does not change
 - Search failures now surface through `AgentState.error` instead of silently substituting fake results
+
+### 19. Budget Handling Is a Direct Edge (Retry Loop Removed)
+
+**Decision** (2026-10-01, P6): `budget_check → adapt_weather` is a plain direct edge. `_route_after_budget`, the conditional edge, and the `retry_count` state field were removed.
+
+**Rationale**:
+- Since M4, `budget_check` applies a deterministic in-place downgrade whenever the draft exceeds budget, so the router always resolved to `adapt_weather` and the `plan_itinerary` branch was unreachable dead code
+- Removing it makes the graph topology match actual runtime behaviour and eliminates the misleading `retry_count` mechanism
+- Supersedes decision #8
+
+### 20. Soft Failures Accumulate As `warnings`, Not `error`
+
+**Decision** (2026-10-01, P2): `AgentState` carries `warnings: Annotated[List[str], operator.add]`. Recoverable search failures (`search_poi`/`search_food`) append a warning; only truly fatal conditions set `error`. The `complete` SSE event attaches `warnings`.
+
+**Rationale**:
+- The graph can still produce a full itinerary from an empty candidate list, so a missing Amap key or a network blip must not abort the stream
+- `operator.add` lets the three parallel fetchers each append without reducer collisions
+- Surfacing `warnings` to the frontend lets it flag "partially degraded data" instead of showing a hard error
+
+### 21. Response Schema Is Enforced At The Exit
+
+**Decision** (2026-10-01, P8): before emitting `complete`, `main.py` runs `TripPlanResponse.model_validate(final).model_dump(mode="json")`. `Activity` exposes `type` with `alias="activity_type"` and `populate_by_name=True`.
+
+**Rationale**:
+- Previously the Pydantic response model was decorative — node output was `json.dumps`'d directly, so field drift silently reached the frontend
+- The alias aligns the schema with the `type` key the nodes actually emit and the frontend consumes, while `populate_by_name` keeps `Activity(type=...)` construction working
+- Exit validation turns any future field drift into a caught error rather than a silent contract break
+
+### 22. Couple Messages Are Generated In One Batched LLM Call
+
+**Decision** (2026-10-01, P7): `add_couple_touch` generates all activity messages in a single LLM call returning a JSON array, instead of one call per activity.
+
+**Rationale**:
+- The per-activity loop meant 3 days × ~6 activities = ~18 serial calls (doubled by the old P1 double-run), risking multi-minute requests
+- Batching drops LLM cost from O(activities) to O(1); failed/missing entries fall back to the template library via `_pick_message`, and `_trim_message` enforces the 6–25 char constraint
+
+### 23. Degradation Is Observable Via Structured Logging
+
+**Decision** (2026-10-01, P10): a project-wide `logging.getLogger("coupletrip")` logger replaces silent `except Exception: pass` blocks in weather/LLM/search paths with `logger.warning(..., exc_info=True)`.
+
+**Rationale**:
+- The whole chain has mock fallbacks, but with zero logging there was no way in production to distinguish real data from a mock, making triage guesswork
+- `exc_info=True` preserves the stack for debugging while keeping the request flowing through the degraded path
+

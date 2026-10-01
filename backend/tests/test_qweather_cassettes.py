@@ -31,10 +31,20 @@ def _vcr() -> vcr.VCR:
     )
 
 
+# P9 fix: cassettes were recorded against this host; pin it so tests pass
+# in any environment regardless of QWEATHER_BASE_URL in .env.
+_CASSETTE_HOST = "https://kb3fc38v6c.re.qweatherapi.com"
+
+
 @pytest.fixture(autouse=True)
 def _offline_qweather(monkeypatch):
-    """Use dummy auth so cassette replay does not depend on .env credentials."""
+    """Use dummy auth so cassette replay does not depend on .env credentials.
+
+    P9: also pin qweather_base_url to the host recorded in the cassettes so
+    the VCR host matcher succeeds on machines without a personal .env.
+    """
     monkeypatch.setattr(settings, "weather_api_key", "test-key")
+    monkeypatch.setattr(settings, "qweather_base_url", _CASSETTE_HOST)
     monkeypatch.setattr(
         weather_tool_module,
         "_qweather_headers",

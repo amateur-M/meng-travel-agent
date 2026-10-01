@@ -25,12 +25,13 @@ class TestAgentStateTypedDict:
             "user_input": {"destination": "大理", "budget": 5000},
             "current_phase": "start",
             "error": "",
-            "retry_count": 0,
+            "warnings": [],   # P2
+            # P6: retry_count removed
         }
         assert state["user_input"]["destination"] == "大理"
         assert state["current_phase"] == "start"
         assert state["error"] == ""
-        assert state["retry_count"] == 0
+        assert state["warnings"] == []
 
     def test_full_state(self):
         state: AgentState = {
@@ -57,7 +58,8 @@ class TestAgentStateTypedDict:
             "messages": [],
             "current_phase": "start",
             "error": "",
-            "retry_count": 0,
+            "warnings": [],   # P2
+            # P6: retry_count removed
         }
         assert len(state["weather_data"]) == 2
         assert len(state["poi_list"]) == 1
@@ -70,6 +72,6 @@ class TestAgentStateTypedDict:
 
     def test_current_phase_annotated_type(self):
         """Verify current_phase accepts string values."""
-        state: AgentState = {"current_phase": "parse_input", "error": "", "retry_count": 0}
+        state: AgentState = {"current_phase": "parse_input", "error": "", "warnings": []}
         state["current_phase"] = "fetch_weather"
         assert state["current_phase"] == "fetch_weather"

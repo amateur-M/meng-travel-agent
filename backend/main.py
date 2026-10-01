@@ -1,16 +1,19 @@
-﻿"""CoupleTrip Backend — FastAPI entry point."""
+"""CoupleTrip Backend — FastAPI entry point."""
 
 import json
 import asyncio
+import logging
 from typing import AsyncGenerator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
-from schemas import TripPlanRequest
+from schemas import TripPlanRequest, TripPlanResponse
 from agents.state import AgentState
 from agents.graph import graph
+
+logger = logging.getLogger("coupletrip")
 
 app = FastAPI(
     title="CoupleTrip API",
@@ -42,9 +45,16 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
     Uses graph.astream() for async-friendly per-node state snapshots.
     Falls back to a blocking graph.stream() wrapped in a thread if
     astream is unavailable (older LangGraph versions).
+
+    P1 fix: the last chunk yielded by astream(stream_mode="values") IS the
+    terminal state — no second ainvoke() is needed.
+    P5 fix: catch-all Exception branch emits an SSE error event and logs
+    the traceback instead of silently breaking the stream.
     """
     try:
+        final_state: dict = {}
         async for chunk in graph.astream(initial_state, stream_mode="values"):
+            final_state = chunk  # P1: last chunk is the terminal state
             phase = chunk.get("current_phase", "")
             error = chunk.get("error", "")
 
@@ -52,7 +62,6 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
                 yield f"event: error\ndata: {json.dumps({'phase': phase, 'message': error}, ensure_ascii=False)}\n\n"
                 return
 
-            # Build a lightweight progress event
             payload = {
                 "phase": phase,
                 "message": _phase_message(phase),
@@ -60,10 +69,21 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
             yield f"event: step\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
             await asyncio.sleep(0)  # yield control to event loop
 
-        # ── emit final result ────────────────────────────────────
-        final_state = await graph.ainvoke(initial_state)
+        # ── emit final result (P1: reuse terminal state from astream) ─────
         final = final_state.get("final_itinerary", {})
-        yield f"event: complete\ndata: {json.dumps(final, ensure_ascii=False)}\n\n"
+        # P2: attach accumulated soft-failure warnings so the frontend can
+        # show a "部分数据来自降级" banner without breaking the stream.
+        warnings = final_state.get("warnings", [])
+        # P8: validate through TripPlanResponse so field drift is caught here
+        # rather than silently propagating to the frontend.
+        try:
+            validated = TripPlanResponse.model_validate(final)
+            payload_base = validated.model_dump(mode="json")
+        except Exception as val_exc:
+            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
+            payload_base = final
+        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+        yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
 
     except AttributeError:
         # Fallback: graph.stream() is sync-only in older LangGraph
@@ -73,8 +93,7 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
             events = []
             for chunk in graph.stream(initial_state, stream_mode="values"):
                 events.append(chunk)
-            final = graph.invoke(initial_state)
-            events.append(final)
+            # P1: last event is the terminal state — no second invoke() needed
             return events
 
         loop = asyncio.get_running_loop()
@@ -90,8 +109,25 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
             payload = {"phase": phase, "message": _phase_message(phase)}
             yield f"event: step\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
-        final = events[-1].get("final_itinerary", {})
-        yield f"event: complete\ndata: {json.dumps(final, ensure_ascii=False)}\n\n"
+        final = events[-1].get("final_itinerary", {}) if events else {}
+        # P2: same warnings attachment for the sync-fallback path
+        warnings = events[-1].get("warnings", []) if events else []
+        # P8: same validation for the sync-fallback path
+        try:
+            validated = TripPlanResponse.model_validate(final)
+            payload_base = validated.model_dump(mode="json")
+        except Exception as val_exc:
+            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
+            payload_base = final
+        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+        yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
+
+    except Exception as exc:  # P5: catch-all — emit error event, log traceback
+        logger.exception("Unhandled error in SSE stream")
+        yield (
+            f"event: error\n"
+            f"data: {json.dumps({'phase': 'unknown', 'message': str(exc)}, ensure_ascii=False)}\n\n"
+        )
 
 
 def _phase_message(phase: str) -> str:
@@ -134,7 +170,8 @@ async def create_plan(request: TripPlanRequest):
         },
         "current_phase": "start",
         "error": "",
-        "retry_count": 0,
+        "warnings": [],   # P2: initialise the accumulator
+        # P6: retry_count removed (was dead code)
     }
 
     return StreamingResponse(

@@ -1,6 +1,6 @@
-﻿"""LangGraph state graph — builds and compiles the travel-planning pipeline.
+"""LangGraph state graph — builds and compiles the travel-planning pipeline.
 
-Graph topology (M1):
+Graph topology (M4, post-P6 cleanup):
 
   parse_input
       │
@@ -8,10 +8,10 @@ Graph topology (M1):
       ├──→ search_poi    ──┤
       └──→ search_food   ──┘
               │
-        plan_itinerary ←──────────────┐
-              │                       │
-        budget_check ──(over)─────────┘  ←  loop, max 2 retries
-              │ (ok)
+        plan_itinerary
+              │
+        budget_check   ← deterministic in-place downgrade (no retry loop)
+              │
         adapt_weather
               │
         add_couple_touch
@@ -20,9 +20,9 @@ Graph topology (M1):
               │
              END
 
-Conditional edges:
-  - budget_check → plan_itinerary  when over_budget AND retry_count < 2
-  - budget_check → adapt_weather  otherwise
+P6: the conditional retry edge (budget_check → plan_itinerary) was removed.
+M4 made budget_check apply a deterministic in-place downgrade and always set
+downgrade_applied=True, making the retry branch permanently unreachable.
 """
 
 from langgraph.graph import StateGraph, END
@@ -38,26 +38,6 @@ from agents.nodes.budget_check import budget_check
 from agents.nodes.adapt_weather import adapt_weather
 from agents.nodes.add_couple_touch import add_couple_touch
 from agents.nodes.output_format import output_format
-
-
-# ── Router ───────────────────────────────────────────────────────
-
-def _route_after_budget(state: AgentState) -> str:
-    """Decide whether to retry planning or move on to weather adaptation.
-
-    Retry condition: budget exceeded AND fewer than 2 retry attempts.
-    Otherwise pass through to adapt_weather.
-    """
-    bb = state.get("budget_breakdown", {})
-    over = bb.get("over_budget", False)
-    downgrade_applied = bb.get("downgrade_applied", False)
-    retries = state.get("retry_count", 0)
-
-    if downgrade_applied:
-        return "adapt_weather"
-    if over and retries < 2:
-        return "plan_itinerary"
-    return "adapt_weather"
 
 
 # ── Build ────────────────────────────────────────────────────────
@@ -90,17 +70,12 @@ def build_graph() -> StateGraph:
     workflow.add_edge("search_poi", "plan_itinerary")
     workflow.add_edge("search_food", "plan_itinerary")
 
-    # ── core loop: plan → budget → (retry?) → weather ───────────
+    # ── core sequence: plan → budget → weather → touch → output ──
+    # P6: direct edge replaces the former conditional retry loop.
+    # budget_check now applies a deterministic in-place downgrade and
+    # always routes forward — the plan_itinerary retry branch was dead code.
     workflow.add_edge("plan_itinerary", "budget_check")
-
-    workflow.add_conditional_edges(
-        "budget_check",
-        _route_after_budget,
-        {
-            "plan_itinerary": "plan_itinerary",
-            "adapt_weather": "adapt_weather",
-        },
-    )
+    workflow.add_edge("budget_check", "adapt_weather")
 
     # ── polish & finalise ────────────────────────────────────────
     workflow.add_edge("adapt_weather", "add_couple_touch")

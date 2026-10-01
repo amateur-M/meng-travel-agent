@@ -9,16 +9,11 @@ import copy
 from typing import Any
 
 from agents.state import AgentState
-from prompts import WEATHER_ADAPT_PROMPT
+from prompts import WEATHER_ADAPT_PROMPT, fill_prompt
 from services.llm import call_llm
 
 
-def _fill_prompt(template: str, **kwargs) -> str:
-    """Fill template placeholders using str.replace (avoids JSON {} conflict)."""
-    result = template
-    for key, val in kwargs.items():
-        result = result.replace("{" + key + "}", str(val))
-    return result
+# Tidy: _fill_prompt removed — now imported as fill_prompt from prompts package.
 
 
 def _format_weather_and_itinerary(state: AgentState) -> tuple[str, str]:
@@ -277,7 +272,7 @@ def adapt_weather(state: AgentState) -> dict[str, Any]:
     """Apply weather-based adjustments to the draft itinerary."""
     weather_text, itinerary_text = _format_weather_and_itinerary(state)
 
-    adapt_prompt = _fill_prompt(
+    adapt_prompt = fill_prompt(
         WEATHER_ADAPT_PROMPT,
         weather_data=weather_text,
         itinerary_summary=itinerary_text,

@@ -1,45 +1,13 @@
-﻿"""Integration tests for the full LangGraph travel-planning pipeline."""
+"""Integration tests for the full LangGraph travel-planning pipeline."""
 
 import pytest
 
 from agents.state import AgentState
-from agents.graph import graph, build_graph, _route_after_budget
+from agents.graph import graph, build_graph
 
 
-class TestRouteAfterBudget:
-    """Conditional edge routing logic."""
-
-    def test_under_budget_routes_to_adapt_weather(self):
-        state: AgentState = {
-            "budget_breakdown": {"over_budget": False},
-            "retry_count": 0,
-        }
-        assert _route_after_budget(state) == "adapt_weather"
-
-    def test_over_budget_under_retry_limit_routes_to_plan_itinerary(self):
-        state: AgentState = {
-            "budget_breakdown": {"over_budget": True},
-            "retry_count": 0,
-        }
-        assert _route_after_budget(state) == "plan_itinerary"
-
-    def test_over_budget_first_retry_loops(self):
-        state: AgentState = {
-            "budget_breakdown": {"over_budget": True},
-            "retry_count": 1,
-        }
-        assert _route_after_budget(state) == "plan_itinerary"
-
-    def test_over_budget_max_retries_routes_to_adapt_weather(self):
-        state: AgentState = {
-            "budget_breakdown": {"over_budget": True},
-            "retry_count": 2,
-        }
-        assert _route_after_budget(state) == "adapt_weather"
-
-    def test_missing_budget_breakdown_defaults_to_pass(self):
-        state: AgentState = {"retry_count": 0}
-        assert _route_after_budget(state) == "adapt_weather"
+# P6: TestRouteAfterBudget removed — _route_after_budget was deleted together
+# with the unreachable conditional retry edge in graph.py.
 
 
 class TestGraphBuild:
@@ -69,7 +37,8 @@ class TestGraphInvoke:
             },
             "current_phase": "start",
             "error": "",
-            "retry_count": 0,
+            "warnings": [],   # P2
+            # P6: retry_count removed
         }
 
     def test_full_graph_completes_dali(self):

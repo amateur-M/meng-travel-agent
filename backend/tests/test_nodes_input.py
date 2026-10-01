@@ -1,4 +1,4 @@
-﻿"""Tests for input-stage nodes: parse_input, fetch_weather, search_poi, search_food."""
+"""Tests for input-stage nodes: parse_input, fetch_weather, search_poi, search_food."""
 
 import pytest
 from datetime import date, timedelta
@@ -63,7 +63,8 @@ def _min_state(overrides: dict | None = None) -> AgentState:
         },
         "current_phase": "start",
         "error": "",
-        "retry_count": 0,
+        "warnings": [],   # P2
+        # P6: retry_count removed
     }
     if overrides:
         s.update(overrides)
@@ -83,8 +84,9 @@ class TestParseInput:
         assert p["pace"] == "relaxed"
         assert p["num_days"] == 3
         assert result["current_phase"] == "parse_input"
-        assert result["retry_count"] == 0
         assert result["error"] == ""
+        assert result["warnings"] == []   # P2
+        # P6: retry_count assertion removed
 
     def test_defaults_missing_fields(self):
         state: AgentState = {"user_input": {"destination": "Lijiang"}, "current_phase": "", "error": "", "retry_count": 0}
@@ -163,7 +165,8 @@ class TestSearchPoi:
         pois = result["poi_list"]
         assert len(pois) >= 2
         assert result["current_phase"] == "search_poi"
-        assert result["error"] == ""
+        # P2: no warnings on success
+        assert result["warnings"] == []
 
     def test_each_poi_has_expected_keys(self):
         state: AgentState = {
@@ -177,7 +180,8 @@ class TestSearchPoi:
             assert "type" in poi
             assert "rating" in poi or "couple_score" in poi
 
-    def test_sets_error_when_amap_fails(self):
+    def test_sets_warning_when_amap_fails(self):
+        """P2: search failure is a soft warning, not a fatal error."""
         state: AgentState = {
             "parsed_params": {"destination": "Dali", "preferences": []},
             "current_phase": "", "error": "", "retry_count": 0,
@@ -185,7 +189,9 @@ class TestSearchPoi:
         with patch("services.amap.search_pois", side_effect=RuntimeError("no key")):
             result = search_poi(state)
         assert result["poi_list"] == []
-        assert "景点搜索失败" in result["error"]
+        # P2: failure goes to warnings, not error
+        assert len(result["warnings"]) == 1
+        assert "景点搜索失败" in result["warnings"][0]
 
 
 class TestSearchFood:
@@ -200,7 +206,8 @@ class TestSearchFood:
         foods = result["food_list"]
         assert len(foods) >= 1
         assert result["current_phase"] == "search_food"
-        assert result["error"] == ""
+        # P2: no warnings on success
+        assert result["warnings"] == []
 
     def test_each_food_has_expected_keys(self):
         state: AgentState = {

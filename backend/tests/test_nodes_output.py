@@ -1,4 +1,4 @@
-﻿"""Tests for output-stage nodes: add_couple_touch, output_format."""
+"""Tests for output-stage nodes: add_couple_touch, output_format."""
 
 import pytest
 
@@ -22,7 +22,7 @@ def _full_state(destination="Dali", days=3):
         "preferences": ["romantic", "food"],
         "pace": "relaxed",
     }
-    state: AgentState = {"user_input": user, "current_phase": "start", "error": "", "retry_count": 0}
+    state: AgentState = {"user_input": user, "current_phase": "start", "error": "", "warnings": [], "retry_count": 0}
     state.update(parse_input(state))
     state.update(fetch_weather(state))
     state.update(search_poi(state))

@@ -1,4 +1,4 @@
-﻿"""fetch_weather — Retrieve weather forecasts for trip dates.
+"""fetch_weather — Retrieve weather forecasts for trip dates.
 
 M2: delegates to weather_tool which tries QWeather (和风天气) first,
 falls back to a 12-city seasonal mock database on failure.
@@ -32,6 +32,9 @@ def fetch_weather(state: AgentState) -> Dict[str, Any]:
     except (ValueError, TypeError):
         from datetime import date as dt
         sd = dt.today()
+        # P4 fix: write back the corrected start_str so weather_tool_sync
+        # receives a valid ISO date instead of the original malformed value.
+        start_str = sd.isoformat()
         end_str = (sd + timedelta(days=num_days - 1)).isoformat()
 
     weather_data = weather_tool_sync(destination, start_str, end_str)

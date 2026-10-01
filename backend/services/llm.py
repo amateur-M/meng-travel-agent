@@ -12,12 +12,15 @@ returns the supplied mock_response so the graph remains testable.
 """
 
 import json
+import logging
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from config.settings import settings
+
+logger = logging.getLogger("coupletrip")
 
 # ---------------------------------------------------------------------------
 # Per-provider client cache
@@ -77,6 +80,8 @@ def _get_llm(provider: str = "openai") -> Optional[ChatOpenAI]:
         "api_key": api_key,
         "temperature": 0.7,
         "max_tokens": 4096,
+        # Tidy/上线前: prevent upstream hangs from blocking the whole request
+        "request_timeout": 60,
     }
 
     base_url_attr = cfg.get("base_url_attr")
@@ -141,6 +146,12 @@ def call_llm(
         content = response.content if hasattr(response, "content") else str(response)
         return json.loads(_extract_json(content))
     except Exception as e:
+        # P10: log the failure before falling back to mock
+        logger.warning(
+            "LLM call failed (provider=%s): %s; using mock_response",
+            provider, e,
+            exc_info=True,
+        )
         if mock_response is not None:
             return mock_response
         raise

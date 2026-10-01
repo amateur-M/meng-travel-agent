@@ -1,4 +1,4 @@
-﻿## Development Progress
+## Development Progress
 
 | Milestone | Status | Start Date | End Date | Notes |
 |-----------|--------|------------|----------|-------|
@@ -161,3 +161,29 @@
 - Backend `POST /api/plan` integration verified through Vite proxy and returns SSE `complete`
 - Backend 3-day request verified to return 3 itinerary days after date-range fix
 - Real end-to-end graph verified with live Amap + QWeather + Qwen (2-day Dali plan)
+
+## Backend Code-Review Fixes (2026-10-01)
+
+Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (baseline commit `0710d9f`).
+
+### Phase 0 — immediate
+- [x] **P1**: `/api/plan` no longer runs the graph twice. Reuse `astream(stream_mode="values")` terminal chunk as `final_state`; removed `graph.ainvoke()` (and `graph.invoke()` in the sync fallback). LLM calls per request halved.
+- [x] **P5**: `main.py` catches broad `Exception`, emits an SSE `error` event and logs the stack via `logger.exception(...)`; the legacy `AttributeError` async/sync fallback is preserved.
+
+### Phase 1 — this iteration
+- [x] **P2**: `AgentState` gained `warnings: Annotated[List[str], operator.add]`. `search_poi`/`search_food` append a degradation warning instead of writing fatal `error`, so a missing Amap key no longer aborts the stream. `complete` event carries `warnings`.
+- [x] **P3**: OpenWeatherMap async parser no longer reads a leftover loop variable; per-day `pop` values are collected and reduced with `max()`.
+- [x] **P4**: `fetch_weather` except-branch writes back `start_str = sd.isoformat()` before computing `end_str`, so an invalid date degrades to mock instead of raising.
+- [x] **P7**: couple messages generated in a single batched LLM call (`_generate_batch_llm_messages`) instead of one call per activity; `_trim_message` enforces the 6–25 char constraint; `None` results fall back to the template library. LLM cost drops from O(activities) to O(1).
+- [x] **P9**: `test_qweather_cassettes.py` pins `settings.qweather_base_url` to the cassette host via `monkeypatch`, so the suite passes on a clean environment without `.env`.
+
+### Phase 2 — architecture tidy-up
+- [x] **P8**: `Activity.activity_type` renamed to `type` with `alias="activity_type"` + `populate_by_name`; missing `ActivityType` enum values (`自然`/`人文`/`网红`) added; `main.py` runs `TripPlanResponse.model_validate(...).model_dump(mode="json")` as an exit guard before `complete`.
+- [x] **P10**: introduced `logging.getLogger("coupletrip")`; silent `except Exception: pass` blocks in weather/LLM/search now `logger.warning(..., exc_info=True)`.
+- [x] **P6**: removed the unreachable budget-retry loop — deleted `_route_after_budget` + conditional edge (now a direct `budget_check → adapt_weather` edge), dropped `retry_count` from state, and removed the unused `BUDGET_CHECK_PROMPT` import.
+- [x] **Tidiness**: extracted the shared `fill_prompt()` into `prompts/` (was duplicated in three nodes); deleted dead code (`_parse_qweather_daily`, unused inline prompts); added `request_timeout=60` to the LLM client.
+
+### Test result
+- Baseline: 155 passed / 2 failed / 1 skipped
+- Final: **148 passed / 0 failed / 1 skipped** (net decrease from removing dead-code tests: 5 budget-router + 3 `_parse_qweather_daily` + 7 dead-prompt tests; added 3 P8 schema tests + 3 `fill_prompt` tests)
+- No-API-key end-to-end smoke test verified: 3-day degraded itinerary returned, `warnings` accumulated, `TripPlanResponse` exit validation passed, activities carry `type` + `couple_note`.

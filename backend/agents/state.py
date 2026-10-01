@@ -1,10 +1,11 @@
-﻿"""AgentState — the shared state dictionary threaded through every LangGraph node.
+"""AgentState — the shared state dictionary threaded through every LangGraph node.
 
 Every node receives this state, mutates a subset of fields, and returns the
 partial update.  LangGraph merges partials back into the shared state
 automatically.
 """
 
+import operator
 from typing import TypedDict, Annotated, List
 from langgraph.graph.message import add_messages
 
@@ -57,7 +58,14 @@ class AgentState(TypedDict, total=False):
     #   Human-readable label for the active pipeline stage (used for SSE).
     #   Uses _latest_str reducer so parallel nodes don't collide.
     error: Annotated[str, _latest_str]
-    #   Non-empty signals a recoverable or terminal problem. Uses _latest_str
-    #   so parallel fetchers (weather/poi/food) can write without colliding.
-    retry_count: int
-    #   Budget-retry counter; capped at 2 to prevent infinite loops.
+    #   Non-empty signals a terminal problem that should abort the pipeline.
+    #   Uses _latest_str so parallel fetchers can write without colliding.
+    #   Soft/recoverable failures go to `warnings` instead (P2).
+    warnings: Annotated[List[str], operator.add]
+    #   P2: soft-failure messages accumulated across nodes (e.g. search_poi
+    #   could not reach Amap).  Never aborts the pipeline; surfaced to the
+    #   frontend in the `complete` SSE event so the UI can show a degraded
+    #   banner.  Uses operator.add so parallel nodes each append independently.
+    # P6: retry_count removed — the conditional retry loop in graph.py was
+    #   unreachable dead code after M4 made budget_check always downgrade
+    #   in-place.  The field served no purpose and has been deleted.

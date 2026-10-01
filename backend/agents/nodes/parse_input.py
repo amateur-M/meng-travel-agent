@@ -1,4 +1,4 @@
-﻿"""parse_input — Validate and normalise raw user input into structured params.
+"""parse_input — Validate and normalise raw user input into structured params.
 
 M1 placeholder: performs basic field validation + default fill.
 Real implementation will call the LLM for fuzzy natural-language parsing.
@@ -47,6 +47,8 @@ def parse_input(state: AgentState) -> Dict[str, Any]:
     return {
         "parsed_params": parsed,
         "current_phase": "parse_input",
-        "retry_count": 0,
         "error": "",
+        "warnings": [],   # P2: initialise the soft-failure accumulator
+        # P6: retry_count removed — was dead code after the conditional
+        # retry loop in graph.py was deleted.
     }

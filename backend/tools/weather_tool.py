@@ -1,4 +1,4 @@
-﻿"""Weather Tool — LangChain-compatible weather forecast fetcher.
+"""Weather Tool — LangChain-compatible weather forecast fetcher.
 
 Supports real APIs (QWeather/和风天气 default, OpenWeatherMap fallback)
 and a mock fallback.
@@ -6,6 +6,7 @@ Registered as a LangChain @tool for use in agent chains.
 """
 
 import json
+import logging
 import os
 from datetime import date, timedelta
 from typing import Optional
@@ -15,6 +16,8 @@ from langchain_core.tools import tool
 
 from config.settings import settings
 from services.qweather_auth import build_qweather_headers
+
+logger = logging.getLogger("coupletrip")
 
 # ── Mock weather patterns per city (seasonal) ─────────────────────
 
@@ -133,15 +136,18 @@ async def _fetch_openweathermap(city: str, start: str, end: str) -> dict:
     for entry in data.get("list", []):
         dt = entry.get("dt_txt", "")[:10]  # "2026-08-11 12:00:00" -> "2026-08-11"
         if dt not in by_day:
-            by_day[dt] = {"temps": [], "conditions": [], "humidity": []}
+            by_day[dt] = {"temps": [], "conditions": [], "humidity": [], "pops": []}
         by_day[dt]["temps"].append(entry["main"]["temp"])
         by_day[dt]["conditions"].append(entry["weather"][0]["description"])
         by_day[dt]["humidity"].append(entry["main"]["humidity"])
+        # P3 fix: collect pop per entry so each day gets its own max, not a stale variable
+        by_day[dt]["pops"].append(float(entry.get("pop", 0.0)))
 
     result = {}
     for dt, agg in by_day.items():
         cond = max(set(agg["conditions"]), key=agg["conditions"].count)
-        precip = entry.get("pop", 0.0)
+        # P3 fix: use max of collected pop values for this day (was stale `entry` from outer loop)
+        precip = max(agg["pops"]) if agg["pops"] else 0.0
         result[dt] = {
             "condition": cond,
             "condition_en": "rain" if "雨" in cond else "clear",
@@ -158,53 +164,8 @@ async def _fetch_openweathermap(city: str, start: str, end: str) -> dict:
 
 # ── QWeather (和风天气) client ────────────────────────────────────
 
-def _parse_qweather_daily(daily: list, start: str, end: str) -> dict:
-    """Convert QWeather `daily` entries into the shared weather dict."""
-    try:
-        sd = date.fromisoformat(start)
-        ed = date.fromisoformat(end)
-    except (ValueError, TypeError):
-        sd = date.today()
-        ed = sd + timedelta(days=2)
-
-    result: dict = {}
-    for day in daily:
-        fx_date = day.get("fxDate", "")
-        if not fx_date:
-            continue
-        try:
-            d = date.fromisoformat(fx_date)
-        except ValueError:
-            continue
-        if not (sd <= d <= ed):
-            continue
-
-        text_day = day.get("textDay", "")
-        text_night = day.get("textNight", "")
-        condition = text_day or text_night or "晴"
-        is_rain = any(w in (text_day + text_night) for w in ("雨", "雪", "雷", "阵"))
-        temp_max = float(day.get("tempMax", 0))
-        temp_min = float(day.get("tempMin", 0))
-        wind_dir = day.get("windDirDay", "")
-        wind_scale = day.get("windScaleDay", "")
-        wind = f"{wind_dir}{wind_scale}级" if wind_scale else "微风"
-
-        result[fx_date] = {
-            "condition": condition,
-            "condition_en": "rain" if is_rain else "clear" if "晴" in condition else "cloudy",
-            "high": round(temp_max, 1),
-            "low": round(temp_min, 1),
-            "feels_like": round((temp_max + temp_min) / 2, 1),
-            "precip_prob": 0.75 if is_rain else (0.3 if "云" in condition else 0.1),
-            "humidity": float(day.get("humidity", 60)),
-            "wind": wind,
-            "source": "qweather",
-        }
-
-    if not result:
-        raise ValueError("No QWeather data in the requested date range")
-    return result
-
+# Tidy: _parse_qweather_daily (old v7 format) removed — was dead code
+# referenced only by tests.  _parse_qweather_v1_daily is the live parser.
 
 def _condition_en(condition: str) -> str:
     """Map a Chinese QWeather condition to the shared condition enum."""
@@ -456,7 +417,12 @@ async def weather_tool(city: str, start_date: str, end_date: str) -> str:
         if weather:
             return json.dumps(weather, ensure_ascii=False)
     except Exception:
-        pass  # fallback to mock silently
+        # P10: log the fallback instead of swallowing silently
+        logger.warning(
+            "Weather API (%s) failed for %s %s–%s; falling back to mock",
+            settings.weather_provider, city, start_date, end_date,
+            exc_info=True,
+        )
 
     # 2) Mock fallback
     weather = _generate_mock(city, start_date, end_date)
@@ -475,6 +441,11 @@ def weather_tool_sync(city: str, start_date: str, end_date: str) -> dict:
         if weather:
             return weather
     except Exception:
-        pass  # fallback to mock silently
+        # P10: log the fallback instead of swallowing silently
+        logger.warning(
+            "Weather API (%s) failed for %s %s–%s; falling back to mock",
+            settings.weather_provider, city, start_date, end_date,
+            exc_info=True,
+        )
 
     return _generate_mock(city, start_date, end_date)
