@@ -34,6 +34,7 @@ from agents.nodes.fetch_weather import fetch_weather
 from agents.nodes.search_poi import search_poi
 from agents.nodes.search_food import search_food
 from agents.nodes.plan_itinerary import plan_itinerary
+from agents.nodes.rhythm_control import rhythm_control
 from agents.nodes.budget_check import budget_check
 from agents.nodes.adapt_weather import adapt_weather
 from agents.nodes.add_couple_touch import add_couple_touch
@@ -52,6 +53,7 @@ def build_graph() -> StateGraph:
     workflow.add_node("search_poi", search_poi)
     workflow.add_node("search_food", search_food)
     workflow.add_node("plan_itinerary", plan_itinerary)
+    workflow.add_node("rhythm_control", rhythm_control)
     workflow.add_node("budget_check", budget_check)
     workflow.add_node("adapt_weather", adapt_weather)
     workflow.add_node("add_couple_touch", add_couple_touch)
@@ -70,11 +72,14 @@ def build_graph() -> StateGraph:
     workflow.add_edge("search_poi", "plan_itinerary")
     workflow.add_edge("search_food", "plan_itinerary")
 
-    # ── core sequence: plan → budget → weather → touch → output ──
+    # ── core sequence: plan → rhythm → budget → weather → touch → output ──
+    # M5: rhythm_control normalises periods (≤2 activities each, inject rest)
+    # right after the draft is generated, before budget runs.
     # P6: direct edge replaces the former conditional retry loop.
     # budget_check now applies a deterministic in-place downgrade and
     # always routes forward — the plan_itinerary retry branch was dead code.
-    workflow.add_edge("plan_itinerary", "budget_check")
+    workflow.add_edge("plan_itinerary", "rhythm_control")
+    workflow.add_edge("rhythm_control", "budget_check")
     workflow.add_edge("budget_check", "adapt_weather")
 
     # ── polish & finalise ────────────────────────────────────────

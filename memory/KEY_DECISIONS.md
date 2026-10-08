@@ -219,3 +219,30 @@
 - The whole chain has mock fallbacks, but with zero logging there was no way in production to distinguish real data from a mock, making triage guesswork
 - `exc_info=True` preserves the stack for debugging while keeping the request flowing through the degraded path
 
+### 24. Rhythm Control Is a Separate Deterministic Node (M5)
+
+**Decision** (2026-10-02): A new `rhythm_control` node sits between `plan_itinerary` and `budget_check`. It deterministically caps each period to ≤2 activities and injects period-aware 留白 slots when room exists.
+
+**Rationale**:
+- `plan_itinerary` already hints at the rhythm via prompt, but prompt-only constraints are soft — LLM output can still produce 3+ activities per period
+- A separate node mirrors the established `budget_check` / `adapt_weather` pattern (deterministic transform, no LLM call), keeping the graph's correctness guarantees off the LLM
+- Placing it before `budget_check` means cost capping works on the already-normalised plan, avoiding double-processing
+- Rest injection is capped at `_MAX_PER_PERIOD` so it never violates the hard ≤2 constraint — a full period without rest is left as-is rather than overstuffing
+
+### 25. 留白 Couple Messages Are Differentiated by Period (M5)
+
+**Decision** (2026-10-02): `add_couple_touch._pick_message` selects period-specific 留白 templates (`_REST_TEMPLATES_BY_PERIOD`), and the batch LLM prompt asks for period-aware imagery (晨光/午后/夜色).
+
+**Rationale**:
+- The M2 `couple_copy_prompt.md` already guided tone by activity type but treated all 留白 identically
+- 留白 activities are the core "breathing room" slots; giving them period-specific imagery (morning light / afternoon sun / night stars) deepens the couple experience without adding activities
+- The fallback template bank ensures the experience works without an LLM key, same as M4's deterministic fallbacks
+
+### 26. Frontend CoupleMessage Is a New Inline Component (M5)
+
+**Decision** (2026-10-02): A new `CoupleMessage` component renders the per-activity couple note inline in `TimelineCard`, with period-differentiated accent bars (gold/blush/indigo) and a 留白 chip. `CoupleQuote` remains for day-level side display.
+
+**Rationale**:
+- `CoupleQuote` is a larger figure-style block suited for day summaries; per-activity notes need a compact inline treatment
+- Period accent colors give visual rhythm at a glance: morning gold, afternoon blush, evening indigo
+- 留白 cards get a dashed border + hidden cost to visually signal "this is intentional downtime, not a missing activity"

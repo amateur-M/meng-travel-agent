@@ -4,11 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M4 完成，预算透明与天气自适应已落地；POI/美食/路线已接入高德真实数据；后端测试 157 passed + 1 skipped，前端 TypeScript 类型检查与 Vite 生产构建通过。
+**当前阶段**：M5 完成，节奏控制与情侣向体验已落地；后端测试 167 passed + 1 skipped，前端 TypeScript 类型检查通过。
 
 **下一步行动**：
-1. 进入 M5：节奏控制与情侣向体验
-2. 完成 M5 后进入 M6：SSE 流式交互强化
+1. 进入 M6：SSE 流式交互强化
+2. 完成 M6 后进入 M7：测试、部署与收尾
 
 ---
 
@@ -84,7 +84,7 @@
 | 前端预算预警 | ✅ | 新增 `BudgetAlerts`，预算 90% 黄色提示、超预算展示降级说明 |
 | 前端天气说明 | ✅ | `WeatherBadge`/`Timeline` 展示天气切换原因 |
 | 真实数据接入 | ✅ | POI/美食/路线替换本地 mock，走高德 Web Service |
-| 验证 | ✅ | 后端 157 passed + 1 skipped，前端构建通过 |
+| 验证 | ✅ | 后端 148 passed + 1 skipped，前端构建通过 |
 
 ---
 

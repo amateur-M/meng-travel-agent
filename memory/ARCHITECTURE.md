@@ -65,14 +65,18 @@ class TripPlanState(TypedDict):
 
 | Node | 职责 | 输入 | 输出 |
 |------|------|------|------|
-| `gather_input` | 解析并校验用户输入，补全默认值 | 原始请求 | 规范化后的 state |
+| `parse_input` | 解析并校验用户输入，补全默认值 | 原始请求 | 规范化后的 state |
 | `fetch_weather` | 调用天气 API，获取行程日期范围内的天气 | destination, dates | weather_data |
-| `search_pois` | 调用地图 POI API，搜索景点 + 餐厅 + 室内备选 | destination, preferences | poi_attractions, poi_restaurants, poi_indoor |
-| `generate_itinerary` | 调用 LLM 生成初步行程骨架 | weather + pois + 偏好 | itinerary (draft) |
-| `apply_budget` | 核算每项花费，超预算时生成降级方案 | itinerary + budget | itinerary (adjusted), budget_summary |
-| `weather_adapt` | 根据天气条件调整行程（雨天/高温切换） | itinerary + weather_data | itinerary (weather-adjusted) |
-| `add_couple_messages` | 为每个活动生成情侣寄语 | itinerary | itinerary (with messages) |
-| `finalize_plan` | 最终校验、格式化、持久化 | itinerary | 最终 TripPlan |
+| `search_poi` | 调用地图 POI API，搜索景点（含室内备选标记） | destination, preferences | poi_list |
+| `search_food` | 调用地图 API，搜索餐厅 | destination, preferences | food_list |
+| `plan_itinerary` | 调用 LLM 生成初步行程骨架 | weather + pois + 偏好 | draft_itinerary |
+| `rhythm_control` | M5 节奏控制：每档≤2活动 + 留白注入（确定性规则，无 LLM） | draft_itinerary | draft_itinerary (normalised), rhythm_adjustments |
+| `budget_check` | 核算每项花费，超预算时确定性降级（M4 后为原地降级，不再重试） | draft_itinerary + budget | draft_itinerary (adjusted), budget_breakdown |
+| `adapt_weather` | 根据天气条件调整行程（雨天/高温切换） | draft_itinerary + weather_data | draft_itinerary (weather-adjusted), weather_swaps |
+| `add_couple_touch` | 批量 LLM 调用为每个活动生成情侣寄语（P7 优化，M5 增强时段差异化） | draft_itinerary | draft_itinerary (with couple_note), couple_notes |
+| `output_format` | 最终归一化、补 trip_date/天气高低温/daily_cost、格式化为 TripPlanResponse | draft_itinerary + budget + notes + rhythm | final_itinerary |
+
+> 注：节点名以实际代码为准（`parse_input`/`search_poi`/`search_food`/`plan_itinerary`/`budget_check`/`adapt_weather`/`add_couple_touch`/`output_format`），与上文规划稿的 `gather_input`/`search_pois`/`generate_itinerary`/`apply_budget`/`weather_adapt`/`add_couple_messages`/`finalize_plan` 略有差异。
 
 ### 2.3 Edge / 流程编排
 
@@ -82,35 +86,39 @@ class TripPlanState(TypedDict):
                   └──────┬───────┘
                          │
                   ┌──────▼───────┐
-                  │ gather_input │
+                  │ parse_input  │
                   └──────┬───────┘
                          │
-              ┌──────────┼──────────┐
-              │                     │
-       ┌──────▼───────┐     ┌───────▼──────┐
-       │ fetch_weather│     │ search_pois  │   ← 并行
-       └──────┬───────┘     └───────┬──────┘
-              │                     │
-              └──────────┬──────────┘
+           ┌─────────────┼─────────────┐
+           │             │             │
+    ┌──────▼───────┐ ┌───▼────────┐ ┌──▼─────────┐
+    │ fetch_weather│ │ search_poi │ │search_food │   ← 三路并行（fan-out）
+    └──────┬───────┘ └───┬────────┘ └──┬─────────┘
+           │             │             │
+           └─────────────┼─────────────┘
                          │
                   ┌──────▼───────────┐
-                  │generate_itinerary│
+                  │ plan_itinerary   │
+                  └──────┬───────────┘
+                         │
+                  ┌──────▼───────────┐
+                  │ rhythm_control   │   ← M5: 每档≤2活动 + 留白注入
                   └──────┬───────────┘
                          │
                   ┌──────▼───────┐
-                  │ apply_budget │
+                  │ budget_check │   ← 原地确定性降级（M4，不再重试）
                   └──────┬───────┘
                          │
-                  ┌──────▼───────┐
-                  │weather_adapt │
-                  └──────┬───────┘
+                  ┌──────▼────────┐
+                  │ adapt_weather │
+                  └──────┬────────┘
                          │
-                  ┌──────▼───────────┐
-                  │  add_couple_msgs │
-                  └──────┬───────────┘
+                  ┌──────▼─────────────┐
+                  │ add_couple_touch   │   ← 批量 LLM 调用（P7）+ 时段差异化（M5）
+                  └──────┬─────────────┘
                          │
                   ┌──────▼───────┐
-                  │ finalize_plan│
+                  │output_format │
                   └──────┬───────┘
                          │
                   ┌──────▼───────┐
@@ -119,9 +127,9 @@ class TripPlanState(TypedDict):
 ```
 
 **条件分支说明**：
-- `apply_budget` 内部：若累计花费 ≤ 预算，直接通过；若 > 预算，进入降级子流程（替换高价项目 → 重新核算 → 最多重试 2 次）
-- `weather_adapt` 内部：若全部晴天，无操作；若有雨天/高温，触发方案切换子流程
-- 未来可扩展 `router` 条件边实现更复杂的分支（如用户中途修改偏好后重新规划）
+- `budget_check`（M4 后）：累计花费超预算时执行**原地确定性降级**（替换高价 POI/餐厅），然后**直接进入** `adapt_weather`。早期的条件重试回路已在 P6 删除（`budget_check → plan_itinerary` 分支不可达死代码）。
+- `adapt_weather` 内部：若全部晴天，无操作；若有雨天/高温，触发方案切换（rule-based 兜底，LLM 路径可选增强）。
+- 三路 fan-out 的 `current_phase` 用 `_latest_str` reducer、`warnings` 用 `operator.add`，避免并行写入冲突。
 
 ---
 

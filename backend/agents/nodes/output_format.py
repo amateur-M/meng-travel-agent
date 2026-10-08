@@ -64,6 +64,7 @@ def output_format(state: AgentState) -> Dict[str, Any]:
     budget = state.get("budget_breakdown", {})
     notes = state.get("couple_notes", [])
     weather_swaps = state.get("weather_swaps", [])
+    rhythm_adjustments = state.get("rhythm_adjustments", [])
     days = _normalise_days(params, draft, state.get("weather_data", {}))
 
     if not budget:
@@ -90,6 +91,7 @@ def output_format(state: AgentState) -> Dict[str, Any]:
         "days": days,
         "couple_notes": notes,
         "weather_swaps": weather_swaps,
+        "rhythm_adjustments": rhythm_adjustments,
         "status": "completed",
     }
 

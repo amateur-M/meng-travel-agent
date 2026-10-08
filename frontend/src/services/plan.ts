@@ -5,6 +5,7 @@ import type {
   DayPlan,
   Period,
   PlanStepEvent,
+  RhythmAdjustment,
   TripPlanRequest,
   TripPlanResponse,
   WeatherKind,
@@ -230,6 +231,20 @@ function normalizeWeatherSwaps(value: unknown): WeatherSwap[] {
   });
 }
 
+function normalizeRhythmAdjustments(value: unknown): RhythmAdjustment[] {
+  return asArray(value).map((item) => {
+    const adj = asRecord(item);
+    const dropped = asArray(adj.dropped).map((d) => asString(d));
+    return {
+      day_index: asNumber(adj.day_index),
+      period: asString(adj.period),
+      kind: adj.kind === "inject_rest" ? "inject_rest" : "cap",
+      reason: asString(adj.reason),
+      dropped: dropped.length > 0 ? dropped : null,
+    };
+  });
+}
+
 function normalizePlan(
   value: unknown,
   request: TripPlanRequest,
@@ -252,6 +267,7 @@ function normalizePlan(
     days,
     couple_notes: asArray(plan.couple_notes).map((note) => asString(note)),
     weather_swaps: normalizeWeatherSwaps(plan.weather_swaps),
+    rhythm_adjustments: normalizeRhythmAdjustments(plan.rhythm_adjustments),
     status: asString(plan.status, "completed"),
   };
 }

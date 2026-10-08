@@ -138,6 +138,7 @@ def _phase_message(phase: str) -> str:
         "search_poi": "正在搜索热门景点...",
         "search_food": "正在搜索本地美食...",
         "plan_itinerary": "正在为您生成行程...",
+        "rhythm_control": "正在调整行程节奏...",
         "budget_check": "正在核算预算...",
         "adapt_weather": "正在根据天气调整行程...",
         "add_couple_touch": "正在添加浪漫寄语...",

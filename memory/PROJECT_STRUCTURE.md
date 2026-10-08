@@ -28,13 +28,14 @@ meng-travel-agent/
 │   │   ├── __init__.py
 │   │   ├── state.py                 # AgentState TypedDict 定义
 │   │   ├── graph.py                 # LangGraph 图构建 + 编译
-│   │   └── nodes/                   # 各 Node 实现（M1 完成）
+│   │   └── nodes/                   # 各 Node 实现（M1 完成，M5 扩展）
 │   │       ├── __init__.py
 │   │       ├── parse_input.py
 │   │       ├── fetch_weather.py
 │   │       ├── search_poi.py
 │   │       ├── search_food.py
 │   │       ├── plan_itinerary.py
+│   │       ├── rhythm_control.py      # M5: 节奏控制（每档≤2活动 + 留白注入）
 │   │       ├── budget_check.py
 │   │       ├── adapt_weather.py
 │   │       ├── add_couple_touch.py
@@ -97,15 +98,17 @@ meng-travel-agent/
 │       │   │   └── PreferenceTags.tsx
 │       │   ├── Timeline/            # 行程时间轴（Day 1 → Day N）
 │       │   │   └── Timeline.tsx
-│       │   ├── TimelineCard/        # 单个活动卡片
+│       │   ├── TimelineCard/        # 单个活动卡片（M5: 留白 dashed 样式 + CoupleMessage 内联）
 │       │   │   └── TimelineCard.tsx
+│       │   ├── CoupleMessage/       # M5: 时段差异化情侣寄语内联展示
+│       │   │   └── CoupleMessage.tsx
 │       │   ├── BudgetBar/           # 预算进度条
 │       │   │   └── BudgetBar.tsx
 │       │   ├── BudgetAlerts/        # 预算预警与降级说明
 │       │   │   └── BudgetAlerts.tsx
 │       │   ├── WeatherBadge/        # 天气标识
 │       │   │   └── WeatherBadge.tsx
-│       │   ├── CoupleQuote/         # 情侣寄语气泡
+│       │   ├── CoupleQuote/         # 情侣寄语气泡（日级侧边栏）
 │       │   │   └── CoupleQuote.tsx
 │       │   └── SSEProgress/         # Agent 进度可视化
 │       │       └── SSEProgress.tsx
@@ -222,3 +225,21 @@ meng-travel-agent/
 | `frontend/src/components/WeatherBadge/` | 展示天气切换原因 |
 | `frontend/src/components/Timeline/` | 按天过滤并传递天气调整记录 |
 | `frontend/src/pages/PlanResult.tsx` | 页头增加总预算 / 已花费 / 使用比例 |
+
+## M5 新增 / 调整文件清单 (2026-10-02)
+
+| 文件 | 说明 |
+|------|------|
+| `backend/agents/nodes/rhythm_control.py` | M5 节奏控制节点：每档≤2活动裁剪 + 留白注入 |
+| `backend/agents/graph.py` | 注册 rhythm_control，边改为 plan → rhythm → budget |
+| `backend/agents/state.py` | 新增 `rhythm_adjustments` 状态字段 |
+| `backend/agents/nodes/output_format.py` | 输出含 `rhythm_adjustments` |
+| `backend/agents/nodes/add_couple_touch.py` | 留白模板按时段拆分 + batch prompt 增时段指引 |
+| `backend/prompts/couple_copy_prompt.md` | 补充留白时段语气表 + 晚间通用氛围指引 |
+| `backend/schemas/__init__.py` | 新增 `RhythmAdjustment` + `TripPlanResponse.rhythm_adjustments` |
+| `backend/tests/test_nodes_rhythm.py` | 14 个测试：cap/rest/normalise/node |
+| `backend/tests/test_nodes_output.py` | +5 个留白时段寄语测试 + rhythm_adjustments 输出断言 |
+| `frontend/src/components/CoupleMessage/CoupleMessage.tsx` | 时段差异化寄语内联组件（金/粉/靛色条） |
+| `frontend/src/components/TimelineCard/TimelineCard.tsx` | 引入 CoupleMessage + 留白 dashed 边框 + 隐藏花费 |
+| `frontend/src/types/trip.ts` | 新增 `RhythmAdjustment` 接口 |
+| `frontend/src/services/plan.ts` | 新增 `normalizeRhythmAdjustments` |

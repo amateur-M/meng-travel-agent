@@ -48,6 +48,8 @@ class AgentState(TypedDict, total=False):
     #   Structured downgrade adjustments generated when spending exceeds budget.
     weather_swaps: list
     #   Weather-driven itinerary changes emitted to the frontend for explanation.
+    rhythm_adjustments: list
+    #   M5: rhythm-control records (cap over-dense periods, inject rest slots).
     couple_notes: List[str]
     #   Per-activity couple messages, collected across nodes.
     messages: Annotated[list, add_messages]

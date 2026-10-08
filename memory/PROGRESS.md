@@ -7,7 +7,7 @@
 | M2 | Done | 2026-08-11 | 2026-08-16 | External API + LLM integration |
 | M3 | Done | 2026-08-16 | 2026-08-18 | Frontend core UI refactor |
 | M4 | Done | 2026-08-30 | 2026-08-31 | Budget + weather |
-| M5 | Pending | — | — | Rhythm + couple messages |
+| M5 | Done | 2026-10-02 | 2026-10-02 | Rhythm control + couple experience |
 | M6 | Pending | — | — | SSE streaming |
 | M7 | Pending | — | — | Testing + deployment |
 
@@ -153,7 +153,7 @@
 - Backend M2 tools + services + node wiring + multi-provider tested
 - QWeather auth layer tested; real QWeather call verified with credentials
 - vcrpy cassette tests replay external API calls without network access
-- Latest offline test result: 157 passed + 1 skipped
+- Latest offline test result: 148 passed + 1 skipped
 - Latest real QWeather smoke test: 1 passed
 - Frontend M3 TypeScript typecheck passed (`tsc -p tsconfig.app.json` and `tsconfig.node.json`)
 - Frontend Vite production build passed
@@ -187,3 +187,30 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - Baseline: 155 passed / 2 failed / 1 skipped
 - Final: **148 passed / 0 failed / 1 skipped** (net decrease from removing dead-code tests: 5 budget-router + 3 `_parse_qweather_daily` + 7 dead-prompt tests; added 3 P8 schema tests + 3 `fill_prompt` tests)
 - No-API-key end-to-end smoke test verified: 3-day degraded itinerary returned, `warnings` accumulated, `TripPlanResponse` exit validation passed, activities carry `type` + `couple_note`.
+
+## M5 Completion Checklist (2026-10-02)
+
+### Backend — Rhythm Control
+- [x] New `agents/nodes/rhythm_control.py` node: caps each period (上午/下午/晚间) to ≤2 activities, injects period-aware 留白 slot when room exists
+- [x] Graph edge: `plan_itinerary → rhythm_control → budget_check` (registered in `graph.py`)
+- [x] `AgentState` gained `rhythm_adjustments` field; `output_format` surfaces it in `final_itinerary`
+- [x] `_phase_message` updated with `rhythm_control: "正在调整行程节奏..."`
+- [x] `schemas/__init__.py` added `RhythmAdjustment` model + `TripPlanResponse.rhythm_adjustments`
+- [x] `test_nodes_rhythm.py`: 14 tests (cap, rest injection, normalise day, node integration, immutability)
+
+### Backend — Couple Message Enhancement
+- [x] `add_couple_touch._pick_message` now accepts `period`; 留白 templates split by period (`_REST_TEMPLATES_BY_PERIOD`)
+- [x] Batch LLM prompt enriched with period-aware tone guidance (晨光/午后/夜色 motifs for 留白)
+- [x] `couple_copy_prompt.md` expanded with per-period 留白 tone table + evening motif guidance
+- [x] `test_nodes_output.py`: 5 new tests for period-specific rest messages + `rhythm_adjustments` in final output
+
+### Frontend — Couple Experience
+- [x] New `CoupleMessage/CoupleMessage.tsx`: period-differentiated accent bar (gold/blush/indigo) + rest chip
+- [x] `TimelineCard` rewritten: imports `CoupleMessage`, 留白 cards use dashed border + hide cost
+- [x] `types/trip.ts` added `RhythmAdjustment` interface + `TripPlanResponse.rhythm_adjustments`
+- [x] `services/plan.ts` added `normalizeRhythmAdjustments`
+
+### Test Result
+- Backend: **167 passed + 1 skipped** (was 148; +19 new M5 tests)
+- Frontend: `tsc -b` typecheck passed (vite build blocked by Node 16 / Vite 5 env incompatibility, unrelated to code changes)
+- Graph integration: 13/13 passed including full Dali/Lijiang/Sanya end-to-end through rhythm_control

@@ -59,11 +59,33 @@ _TEMPLATES: Dict[str, List[str]] = {
     ],
 }
 
+# M5: 留白寄语按时段差异化（晨光/午后/夜色）
+_REST_TEMPLATES_BY_PERIOD: Dict[str, List[str]] = {
+    "上午": [
+        "晨光里的{name}很安静，你在身边，一天就有了开始的样子。",
+        "不用赶时间，和你慢慢醒过来，就是最好的早晨。",
+    ],
+    "下午": [
+        "午后的{name}，阳光刚好，我们什么都不做也很好。",
+        "陪你发呆，是我旅行中最珍惜的安排。",
+    ],
+    "晚间": [
+        "夜色里的{name}，灯火温柔，牵你的手走回去就很满足。",
+        "星星不多，但有你陪着，这个夜晚刚刚好。",
+    ],
+}
 
-def _pick_message(act_name: str, act_type: str) -> str:
-    """Select a template-based couple message for the given activity."""
+
+def _pick_message(act_name: str, act_type: str, period: str = "") -> str:
+    """Select a template-based couple message for the given activity.
+
+    M5: 留白类型按时段选差异化模板，其他类型按原逻辑。
+    """
     import random
-    templates = _TEMPLATES.get(act_type, _TEMPLATES["景点"])
+    if act_type == "留白" and period in _REST_TEMPLATES_BY_PERIOD:
+        templates = _REST_TEMPLATES_BY_PERIOD[period]
+    else:
+        templates = _TEMPLATES.get(act_type, _TEMPLATES["景点"])
     template = random.choice(templates)
     return template.format(name=act_name)
 
@@ -104,7 +126,14 @@ def _generate_batch_llm_messages(
         f"活动清单：\n{act_list_str}\n\n"
         "请严格按 JSON 数组格式返回，每项包含 id 和 message 字段：\n"
         '[{"id": 0, "message": "..."}, {"id": 1, "message": "..."}]\n'
-        f"数量必须为 {n} 条，id 与活动清单中的 id 一一对应。"
+        f"数量必须为 {n} 条，id 与活动清单中的 id 一一对应。\n\n"
+        "语气指引：\n"
+        "- 自然/户外：有画面感，融入自然环境元素\n"
+        "- 美食：有温度，突出'分享'的快乐\n"
+        "- 文化/室内：细腻安静，有'时光'感\n"
+        "- 冒险：有青春感，带一点俏皮\n"
+        "- 留白：慵懒温柔，按时段融入意象——上午用晨光/微风，下午用午后/阳光，晚间用夜色/灯火/星空\n"
+        "- 晚间活动：浪漫静谧，有夜色和星火的意象\n"
     )
 
     try:
@@ -194,7 +223,11 @@ def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     for i, (day_idx, act) in enumerate(flat):
         note = llm_messages[i] if i < len(llm_messages) else None
         if note is None:
-            note = _pick_message(act["name"], act.get("type", "景点"))
+            note = _pick_message(
+                act["name"],
+                act.get("type", "景点"),
+                act.get("period", ""),
+            )
         act["couple_note"] = note
 
     # ── Phase 4: collect first note per day ───────────────────────

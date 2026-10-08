@@ -5,7 +5,6 @@ import {
   House,
   Landmark,
   MapPin,
-  MessageCircleHeart,
   Mountain,
   Palette,
   TreePine,
@@ -13,6 +12,7 @@ import {
   WalletCards,
 } from "lucide-react";
 import type { Activity, ActivityType } from "../../types/trip";
+import { CoupleMessage } from "../CoupleMessage/CoupleMessage";
 
 interface TimelineCardProps {
   activity: Activity;
@@ -42,14 +42,20 @@ export const timelineCardMotion: Variants = {
 
 /**
  * 单个活动卡片，展示类型图标、时间、地点、花费与情侣寄语。
+ * M5: 留白活动用虚线边框区分；寄语用 CoupleMessage 按时段差异化展示。
  */
 export function TimelineCard({ activity }: TimelineCardProps) {
   const meta = TYPE_META[activity.activity_type] ?? TYPE_META.留白;
   const Icon = meta.Icon;
+  const isRest = activity.activity_type === "留白";
 
   return (
     <motion.article
-      className="relative rounded-lg border border-cream-200 bg-white p-4 shadow-soft"
+      className={`relative rounded-lg p-4 shadow-soft ${
+        isRest
+          ? "border border-dashed border-cream-300 bg-cream-50/40"
+          : "border border-cream-200 bg-white"
+      }`}
       variants={timelineCardMotion}
     >
       <div className="flex gap-3">
@@ -76,10 +82,12 @@ export function TimelineCard({ activity }: TimelineCardProps) {
               </p>
             </div>
 
-            <span className="inline-flex items-center gap-1 text-sm font-semibold tabular-nums text-ink-700">
-              <WalletCards className="h-3.5 w-3.5 text-gold-400" />¥
-              {activity.estimated_cost.toLocaleString("zh-CN")}
-            </span>
+            {!isRest && (
+              <span className="inline-flex items-center gap-1 text-sm font-semibold tabular-nums text-ink-700">
+                <WalletCards className="h-3.5 w-3.5 text-gold-400" />¥
+                {activity.estimated_cost.toLocaleString("zh-CN")}
+              </span>
+            )}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-xs text-ink-400">
@@ -103,10 +111,11 @@ export function TimelineCard({ activity }: TimelineCardProps) {
           )}
 
           {activity.couple_note && (
-            <p className="mt-3 flex items-start gap-1.5 text-sm leading-6 text-blush-600">
-              <MessageCircleHeart className="mt-1 h-4 w-4 shrink-0" />
-              <span>{activity.couple_note}</span>
-            </p>
+            <CoupleMessage
+              text={activity.couple_note}
+              activityType={activity.activity_type}
+              period={activity.period}
+            />
           )}
         </div>
       </div>

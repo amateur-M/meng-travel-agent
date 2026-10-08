@@ -76,6 +76,14 @@ export interface WeatherSwap {
   adjustment_type: "swap" | "time_shift";
 }
 
+export interface RhythmAdjustment {
+  day_index: number;
+  period: string;
+  kind: "cap" | "inject_rest";
+  reason: string;
+  dropped?: string[] | null;
+}
+
 export interface TripPlanResponse {
   plan_id: string;
   destination: string;
@@ -85,6 +93,7 @@ export interface TripPlanResponse {
   days: DayPlan[];
   couple_notes: string[];
   weather_swaps: WeatherSwap[];
+  rhythm_adjustments: RhythmAdjustment[];
   status: string;
 }
 

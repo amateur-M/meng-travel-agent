@@ -118,6 +118,16 @@ class WeatherSwap(BaseModel):
     adjustment_type: str = Field(default="swap", description="swap / time_shift")
 
 
+class RhythmAdjustment(BaseModel):
+    """A rhythm-control adjustment (M5): cap over-dense periods or inject rest."""
+
+    day_index: int = Field(..., description="第几天（0-based）")
+    period: str = Field(default="", description="时段：上午/下午/晚间")
+    kind: str = Field(default="", description="cap / inject_rest")
+    reason: str = Field(default="", description="调整原因")
+    dropped: Optional[List[str]] = Field(None, description="被裁剪的活动名称（kind=cap 时）")
+
+
 class TripPlanResponse(BaseModel):
     """Final structured itinerary returned by the agent."""
 
@@ -131,6 +141,10 @@ class TripPlanResponse(BaseModel):
     weather_swaps: List[WeatherSwap] = Field(
         default_factory=list,
         description="天气自适应调整记录",
+    )
+    rhythm_adjustments: List[RhythmAdjustment] = Field(
+        default_factory=list,
+        description="M5 节奏控制调整记录（裁剪/留白注入）",
     )
     status: str = Field(default="completed")
 
