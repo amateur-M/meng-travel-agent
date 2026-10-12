@@ -37,97 +37,11 @@ async def health_check():
     return {"status": "ok", "service": "coupletrip"}
 
 
-# ── Plan (SSE streaming) ────────────────────────────────────────
+# ── SSE event helpers ───────────────────────────────────────────
 
-async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
-    """Run the LangGraph pipeline and yield SSE events per node.
-
-    Uses graph.astream() for async-friendly per-node state snapshots.
-    Falls back to a blocking graph.stream() wrapped in a thread if
-    astream is unavailable (older LangGraph versions).
-
-    P1 fix: the last chunk yielded by astream(stream_mode="values") IS the
-    terminal state — no second ainvoke() is needed.
-    P5 fix: catch-all Exception branch emits an SSE error event and logs
-    the traceback instead of silently breaking the stream.
-    """
-    try:
-        final_state: dict = {}
-        async for chunk in graph.astream(initial_state, stream_mode="values"):
-            final_state = chunk  # P1: last chunk is the terminal state
-            phase = chunk.get("current_phase", "")
-            error = chunk.get("error", "")
-
-            if error:
-                yield f"event: error\ndata: {json.dumps({'phase': phase, 'message': error}, ensure_ascii=False)}\n\n"
-                return
-
-            payload = {
-                "phase": phase,
-                "message": _phase_message(phase),
-            }
-            yield f"event: step\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-            await asyncio.sleep(0)  # yield control to event loop
-
-        # ── emit final result (P1: reuse terminal state from astream) ─────
-        final = final_state.get("final_itinerary", {})
-        # P2: attach accumulated soft-failure warnings so the frontend can
-        # show a "部分数据来自降级" banner without breaking the stream.
-        warnings = final_state.get("warnings", [])
-        # P8: validate through TripPlanResponse so field drift is caught here
-        # rather than silently propagating to the frontend.
-        try:
-            validated = TripPlanResponse.model_validate(final)
-            payload_base = validated.model_dump(mode="json")
-        except Exception as val_exc:
-            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
-            payload_base = final
-        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
-        yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
-
-    except AttributeError:
-        # Fallback: graph.stream() is sync-only in older LangGraph
-        import concurrent.futures
-
-        def _run_sync():
-            events = []
-            for chunk in graph.stream(initial_state, stream_mode="values"):
-                events.append(chunk)
-            # P1: last event is the terminal state — no second invoke() needed
-            return events
-
-        loop = asyncio.get_running_loop()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            events = await loop.run_in_executor(pool, _run_sync)
-
-        for chunk in events:
-            phase = chunk.get("current_phase", "")
-            error = chunk.get("error", "")
-            if error:
-                yield f"event: error\ndata: {json.dumps({'phase': phase, 'message': error}, ensure_ascii=False)}\n\n"
-                return
-            payload = {"phase": phase, "message": _phase_message(phase)}
-            yield f"event: step\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-
-        final = events[-1].get("final_itinerary", {}) if events else {}
-        # P2: same warnings attachment for the sync-fallback path
-        warnings = events[-1].get("warnings", []) if events else []
-        # P8: same validation for the sync-fallback path
-        try:
-            validated = TripPlanResponse.model_validate(final)
-            payload_base = validated.model_dump(mode="json")
-        except Exception as val_exc:
-            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
-            payload_base = final
-        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
-        yield f"event: complete\ndata: {json.dumps(complete_payload, ensure_ascii=False)}\n\n"
-
-    except Exception as exc:  # P5: catch-all — emit error event, log traceback
-        logger.exception("Unhandled error in SSE stream")
-        yield (
-            f"event: error\n"
-            f"data: {json.dumps({'phase': 'unknown', 'message': str(exc)}, ensure_ascii=False)}\n\n"
-        )
+def _sse(event: str, data: dict) -> str:
+    """Format a single SSE event frame."""
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
 def _phase_message(phase: str) -> str:
@@ -147,6 +61,127 @@ def _phase_message(phase: str) -> str:
     return messages.get(phase, f"处理中: {phase}")
 
 
+def _emit_node_events(phase: str, update: dict) -> list[str]:
+    """Given a node's partial state update, emit targeted SSE events.
+
+    Besides the universal `step` event, certain nodes produce richer
+    payload events (partial / budget_alert / weather_swap / message)
+    that let the frontend render progressively.
+    """
+    events: list[str] = []
+
+    # ── step event (always) ──────────────────────────────────────
+    events.append(_sse("step", {
+        "phase": phase,
+        "message": _phase_message(phase),
+    }))
+
+    if phase == "plan_itinerary" or phase == "rhythm_control":
+        # Emit a partial event per day so the frontend can render
+        # timeline cards progressively.
+        draft = update.get("draft_itinerary", {})
+        for day in draft.get("days", []):
+            day_index = day.get("day_index", 0)
+            # Group activities by period for the partial payload
+            activities_by_period: dict[str, list] = {}
+            for act in day.get("activities", []):
+                period = act.get("period", "上午")
+                activities_by_period.setdefault(period, []).append(act)
+            events.append(_sse("partial", {
+                "day_index": day_index,
+                "period": "all",
+                "activities": day.get("activities", []),
+                "weather": day.get("weather", day.get("weather_condition", "")),
+            }))
+
+    elif phase == "budget_check":
+        budget = update.get("budget_breakdown", {})
+        if budget:
+            events.append(_sse("budget_alert", {
+                "current": budget.get("total_spent", 0),
+                "limit": budget.get("total_budget", 0),
+                "warning_level": budget.get("warning_level", "ok"),
+                "spending_ratio": budget.get("spending_ratio", 0),
+                "downgrade_applied": budget.get("downgrade_applied", False),
+                "suggestions": update.get("downgrade_suggestions", []),
+                "downgrade_notes": budget.get("downgrade_notes", []),
+            }))
+
+    elif phase == "adapt_weather":
+        swaps = update.get("weather_swaps", [])
+        for swap in swaps:
+            events.append(_sse("weather_swap", {
+                "day_index": swap.get("day_index", 0),
+                "original": swap.get("original_name", ""),
+                "replacement": swap.get("replacement_name", ""),
+                "reason": swap.get("reason", ""),
+                "adjustment_type": swap.get("adjustment_type", "swap"),
+            }))
+
+    elif phase == "add_couple_touch":
+        draft = update.get("draft_itinerary", {})
+        for day in draft.get("days", []):
+            day_index = day.get("day_index", 0)
+            for act in day.get("activities", []):
+                note = act.get("couple_note", "")
+                if note:
+                    events.append(_sse("message", {
+                        "day": day_index,
+                        "activity": act.get("name", ""),
+                        "text": note,
+                    }))
+
+    return events
+
+
+# ── Plan (SSE streaming) ────────────────────────────────────────
+
+async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
+    """Run the LangGraph pipeline and yield SSE events per node.
+
+    M6: uses stream_mode="updates" to get each node's partial output,
+    enabling fine-grained SSE events (partial / budget_alert /
+    weather_swap / message) in addition to the base step / complete /
+    error events.
+    """
+    try:
+        final_state: dict = {}
+        async for chunk in graph.astream(initial_state, stream_mode="updates"):
+            # stream_mode="updates" yields {node_name: partial_update}
+            # LangGraph may also emit the merged state dict as the chunk
+            # value; handle both shapes.
+            if isinstance(chunk, dict):
+                # The update chunk is {node_name: update_dict}
+                for node_name, update in chunk.items():
+                    if not isinstance(update, dict):
+                        continue
+                    phase = update.get("current_phase", node_name)
+                    final_state = {**final_state, **update}
+                    error = update.get("error", "")
+                    if error:
+                        yield _sse("error", {"phase": phase, "message": error})
+                        return
+                    for event in _emit_node_events(phase, update):
+                        yield event
+                        await asyncio.sleep(0)
+
+        # ── emit final result ─────────────────────────────────────
+        final = final_state.get("final_itinerary", {})
+        warnings = final_state.get("warnings", [])
+        try:
+            validated = TripPlanResponse.model_validate(final)
+            payload_base = validated.model_dump(mode="json")
+        except Exception as val_exc:
+            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
+            payload_base = final
+        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+        yield _sse("complete", complete_payload)
+
+    except Exception as exc:
+        logger.exception("Unhandled error in SSE stream")
+        yield _sse("error", {"phase": "unknown", "message": str(exc)})
+
+
 @app.post("/api/plan")
 async def create_plan(request: TripPlanRequest):
     """Receive trip parameters, run the agent graph, and stream progress via SSE.
@@ -154,10 +189,14 @@ async def create_plan(request: TripPlanRequest):
     The client should connect with:
         Accept: text/event-stream
 
-    Events fired:
-        step     — per-node progress notification
-        complete — final TripPlanResponse JSON
-        error    — terminal error message
+    Events fired (M6):
+        step          — per-node progress notification
+        partial       — day-level itinerary chunk (progressive render)
+        budget_alert  — budget summary with downgrade info
+        weather_swap  — weather-driven activity replacement
+        message       — couple note for an activity
+        complete      — final TripPlanResponse JSON
+        error         — terminal error message
     """
     initial_state: AgentState = {
         "user_input": {
@@ -171,8 +210,7 @@ async def create_plan(request: TripPlanRequest):
         },
         "current_phase": "start",
         "error": "",
-        "warnings": [],   # P2: initialise the accumulator
-        # P6: retry_count removed (was dead code)
+        "warnings": [],
     }
 
     return StreamingResponse(
@@ -181,7 +219,7 @@ async def create_plan(request: TripPlanRequest):
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # disable nginx buffering
+            "X-Accel-Buffering": "no",
         },
     )
 

@@ -9,9 +9,11 @@ import {
   MapPinned,
   Plane,
   RotateCcw,
+  Wallet,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { SSEProgress } from "../components/SSEProgress/SSEProgress";
+import { StreamingItinerary } from "../components/StreamingItinerary/StreamingItinerary";
 import { useTripStore } from "../stores/tripStore";
 
 function TravelIllustration() {
@@ -51,8 +53,14 @@ export function Loading() {
   const currentStep = useTripStore((state) => state.currentStep);
   const progress = useTripStore((state) => state.progress);
   const error = useTripStore((state) => state.error);
+  const streamingDays = useTripStore((state) => state.streamingDays);
+  const budgetAlert = useTripStore((state) => state.budgetAlert);
+  const weatherSwaps = useTripStore((state) => state.weatherSwaps);
+  const coupleMessages = useTripStore((state) => state.coupleMessages);
   const beginPlanning = useTripStore((state) => state.beginPlanning);
   const resetPlan = useTripStore((state) => state.resetPlan);
+
+  const hasStreamingContent = streamingDays.length > 0;
 
   useEffect(() => {
     if (status === "idle") {
@@ -104,8 +112,8 @@ export function Loading() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream-50 px-4 py-10 text-ink-900">
-      <div className="flex w-full flex-col items-center">
+    <div className="min-h-screen bg-cream-50 px-4 py-10 text-ink-900">
+      <div className="mx-auto flex w-full max-w-4xl flex-col items-center">
         <TravelIllustration />
 
         <motion.h1
@@ -126,10 +134,76 @@ export function Loading() {
           {currentStep}
         </motion.p>
 
-        <div className="mt-8 flex justify-center">
+        <div className="mt-8 flex w-full justify-center">
           <SSEProgress steps={progress} />
+        </div>
+
+        <div className="mt-6 flex w-full flex-col items-center gap-4">
+          <StreamingEventBadges
+            budgetAlert={budgetAlert}
+            weatherSwapCount={weatherSwaps.length}
+            messageCount={coupleMessages.length}
+          />
+
+          {hasStreamingContent && (
+            <div className="mt-2 flex w-full justify-center">
+              <StreamingItinerary days={streamingDays} />
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function StreamingEventBadges({
+  budgetAlert,
+  weatherSwapCount,
+  messageCount,
+}: {
+  budgetAlert: { warning_level: string; current: number; limit: number } | null;
+  weatherSwapCount: number;
+  messageCount: number;
+}) {
+  if (!budgetAlert && weatherSwapCount === 0 && messageCount === 0) {
+    return null;
+  }
+
+  return (
+    <motion.div
+      className="flex flex-wrap items-center justify-center gap-2"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.3 }}
+    >
+      {budgetAlert && (
+        <span
+          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
+            budgetAlert.warning_level === "over"
+              ? "bg-rose-50 text-rose-600"
+              : budgetAlert.warning_level === "warning"
+                ? "bg-amber-50 text-amber-600"
+                : "bg-emerald-50 text-emerald-600"
+          }`}
+        >
+          <Wallet className="h-3.5 w-3.5" />
+          ¥{budgetAlert.current.toLocaleString("zh-CN")} / ¥{budgetAlert.limit.toLocaleString("zh-CN")}
+        </span>
+      )}
+
+      {weatherSwapCount > 0 && (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-600">
+          <CloudSun className="h-3.5 w-3.5" />
+          天气调整 {weatherSwapCount} 项
+        </span>
+      )}
+
+      {messageCount > 0 && (
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-blush-50 px-3 py-1.5 text-xs font-medium text-blush-600">
+          <HeartHandshake className="h-3.5 w-3.5" />
+          已生成 {messageCount} 条寄语
+        </span>
+      )}
+    </motion.div>
   );
 }

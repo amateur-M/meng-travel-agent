@@ -1,11 +1,11 @@
-import type { PlanStepEvent } from "../types/trip";
+import type { PlanStepEvent, PartialEvent, BudgetAlertEvent, WeatherSwapEvent, MessageEvent } from "../types/trip";
 
 export interface SSEHandlers {
   onStep?: (event: PlanStepEvent) => void;
-  onPartial?: (payload: unknown) => void;
-  onBudgetAlert?: (payload: unknown) => void;
-  onWeatherSwap?: (payload: unknown) => void;
-  onMessage?: (payload: unknown) => void;
+  onPartial?: (payload: PartialEvent) => void;
+  onBudgetAlert?: (payload: BudgetAlertEvent) => void;
+  onWeatherSwap?: (payload: WeatherSwapEvent) => void;
+  onMessage?: (payload: MessageEvent) => void;
   onComplete?: (payload: unknown) => void;
   onError?: (payload: unknown) => void;
 }
@@ -13,8 +13,13 @@ export interface SSEHandlers {
 interface PostStreamHandlers {
   body: unknown;
   onStep?: (event: PlanStepEvent) => void;
+  onPartial?: (payload: PartialEvent) => void;
+  onBudgetAlert?: (payload: BudgetAlertEvent) => void;
+  onWeatherSwap?: (payload: WeatherSwapEvent) => void;
+  onMessage?: (payload: MessageEvent) => void;
   onComplete?: (payload: unknown) => void;
   onError?: (payload: unknown) => void;
+  maxRetries?: number;
 }
 
 /**
@@ -54,13 +59,56 @@ export function connectSSE(url: string, handlers: SSEHandlers) {
   };
 }
 
+const MAX_RETRIES = 2;
+
 /**
  * 通过 POST + ReadableStream 消费 SSE。当前后端 /api/plan 是 POST 接口，
  * EventSource 无法携带请求体，因此这里用 fetch 手动解析事件流。
+ *
+ * M6: 支持全部事件类型（step/partial/budget_alert/weather_swap/message/
+ * complete/error），并在连接中断时自动重试（最多 maxRetries 次）。
  */
 export async function postEventStream(
   url: string,
   handlers: PostStreamHandlers,
+) {
+  const maxRetries = handlers.maxRetries ?? MAX_RETRIES;
+  let attempt = 0;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let completed = false;
+
+    try {
+      await consumeOnce(url, handlers, () => {
+        completed = true;
+      });
+
+      if (completed) {
+        return;
+      }
+
+      // 流正常结束但未收到 complete —— 视为中断，尝试重试
+      if (attempt >= maxRetries) {
+        throw new Error("流式响应中断，已达最大重试次数");
+      }
+      attempt += 1;
+      await delay(800 * attempt);
+    } catch (error) {
+      // fetch 网络错误或流中途断开
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      attempt += 1;
+      await delay(800 * attempt);
+    }
+  }
+}
+
+async function consumeOnce(
+  url: string,
+  handlers: PostStreamHandlers,
+  markComplete: () => void,
 ) {
   const response = await fetch(url, {
     method: "POST",
@@ -84,11 +132,12 @@ export async function postEventStream(
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
 
+  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { value, done } = await reader.read();
 
     if (done) {
-      break;
+      return;
     }
 
     buffer += decoder.decode(value, { stream: true });
@@ -104,17 +153,31 @@ export async function postEventStream(
 
       if (event.name === "step") {
         handlers.onStep?.(event.data as PlanStepEvent);
-      }
-
-      if (event.name === "complete") {
+      } else if (event.name === "partial") {
+        handlers.onPartial?.(event.data as PartialEvent);
+      } else if (event.name === "budget_alert") {
+        handlers.onBudgetAlert?.(event.data as BudgetAlertEvent);
+      } else if (event.name === "weather_swap") {
+        handlers.onWeatherSwap?.(event.data as WeatherSwapEvent);
+      } else if (event.name === "message") {
+        handlers.onMessage?.(event.data as MessageEvent);
+      } else if (event.name === "complete") {
+        markComplete();
         handlers.onComplete?.(event.data);
-      }
-
-      if (event.name === "error") {
-        handlers.onError?.(event.data);
+      } else if (event.name === "error") {
+        throw new Error(
+          typeof event.data === "object" && event.data !== null
+            ? ((event.data as { message?: string }).message ??
+              "行程生成失败")
+            : String(event.data),
+        );
       }
     }
   }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function parseSseEvent(rawEvent: string) {

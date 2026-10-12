@@ -8,7 +8,7 @@
 | M3 | Done | 2026-08-16 | 2026-08-18 | Frontend core UI refactor |
 | M4 | Done | 2026-08-30 | 2026-08-31 | Budget + weather |
 | M5 | Done | 2026-10-02 | 2026-10-02 | Rhythm control + couple experience |
-| M6 | Pending | — | — | SSE streaming |
+| M6 | Done | 2026-10-03 | 2026-10-03 | SSE streaming enhancement |
 | M7 | Pending | — | — | Testing + deployment |
 
 ## M0 Completion Checklist
@@ -214,3 +214,31 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - Backend: **167 passed + 1 skipped** (was 148; +19 new M5 tests)
 - Frontend: `tsc -b` typecheck passed (vite build blocked by Node 16 / Vite 5 env incompatibility, unrelated to code changes)
 - Graph integration: 13/13 passed including full Dali/Lijiang/Sanya end-to-end through rhythm_control
+
+## M6 Completion Checklist (2026-10-03)
+
+### Backend — SSE Event Expansion
+- [x] `_stream_graph` switched from `stream_mode="values"` to `stream_mode="updates"` to get per-node partial outputs
+- [x] New `_emit_node_events` helper emits targeted events per phase:
+  - `partial` — plan_itinerary / rhythm_control: one event per day with activities
+  - `budget_alert` — budget_check: current/limit/warning_level/spending_ratio/downgrade info
+  - `weather_swap` — adapt_weather: one event per swap (original/replacement/reason/adjustment_type)
+  - `message` — add_couple_touch: one event per activity couple note
+- [x] New `_sse()` helper formats a single SSE frame
+- [x] Removed the obsolete `except AttributeError` sync fallback branch — LangGraph 1.2.12 `astream` is always available, and the branch wrongly swallowed node-level `AttributeError`s
+- [x] `complete` event still validated through `TripPlanResponse` + carries `warnings`
+
+### Frontend — Streaming UX
+- [x] `services/sse.ts`: `postEventStream` rewritten to dispatch all 7 event types + auto-retry on disconnect (max 2 retries, 800ms×attempt backoff)
+- [x] New `components/StreamingItinerary/StreamingItinerary.tsx`: progressive day/period rendering of activity cards from `partial` events
+- [x] `stores/tripStore.ts`: new streaming state (`streamingDays` / `budgetAlert` / `weatherSwaps` / `coupleMessages`) + event callbacks wired into `beginPlanning`
+- [x] `pages/Loading.tsx`: renders streaming itinerary below the progress list + live badges for budget/weather/message counts
+- [x] `types/trip.ts`: new `PartialEvent` / `BudgetAlertEvent` / `WeatherSwapEvent` / `MessageEvent` interfaces
+- [x] `services/plan.ts`: `createPlan` forwards the new event callbacks
+
+### Tests
+- [x] New `tests/test_sse.py`: 16 tests — `_sse`/`_phase_message`/`_emit_node_events` unit tests + full-stream integration (event types, ordering, complete structure)
+
+### Test Result
+- Backend: **183 passed + 1 skipped** (was 167; +16 new M6 SSE tests)
+- Frontend: `tsc --noEmit` typecheck passed + Vite production build passed

@@ -4,11 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M5 完成，节奏控制与情侣向体验已落地；后端测试 167 passed + 1 skipped，前端 TypeScript 类型检查通过。
+**当前阶段**：M6 完成，SSE 流式交互强化已落地；后端测试 183 passed + 1 skipped，前端 TypeScript 类型检查通过。
 
 **下一步行动**：
-1. 进入 M6：SSE 流式交互强化
-2. 完成 M6 后进入 M7：测试、部署与收尾
+1. 进入 M7：测试、部署与收尾
+2. 补充 E2E 测试、Docker 化、CI 流水线
 
 ---
 
@@ -100,3 +100,21 @@
 | 高德地图 / Google Maps | POI 搜索、地理编码 | `MAP_API_KEY` |
 
 密钥统一管理在 `backend/.env`（不提交），模板见 `.env.example`。
+
+---
+
+## M6 SSE 流式交互强化 (2026-10-03)
+
+| 模块 | 状态 | 说明 |
+|------|------|------|
+| 后端 SSE 事件扩展 | ✅ | `stream_mode="updates"` 逐节点发射 step/partial/budget_alert/weather_swap/message/complete/error 7 类事件 |
+| 后端 `_emit_node_events` | ✅ | 按节点阶段发射细粒度事件：plan_itinerary/rhythm_control → partial（逐日）、budget_check → budget_alert、adapt_weather → weather_swap（逐项）、add_couple_touch → message（逐活动） |
+| 后端 fallback 清理 | ✅ | 删除过时的 `except AttributeError` sync fallback 分支（LangGraph 1.2.12 astream 可用），避免误捕获节点异常 |
+| 前端 `postEventStream` 重写 | ✅ | 支持全部 7 类事件 + 断连自动重试（最多 2 次，退避 800ms×attempt） |
+| 前端 `StreamingItinerary` 组件 | ✅ | 新增，partial 事件到达时逐日逐时段 progressive 渲染活动卡片 |
+| 前端 `tripStore` 状态扩展 | ✅ | 新增 streamingDays/budgetAlert/weatherSwaps/coupleMessages 流式状态 + 事件回调订阅 |
+| 前端 Loading 页改造 | ✅ | 进度条下方逐步渲染流式行程 + 预算/天气/寄语徽章实时计数 |
+| 前端类型扩展 | ✅ | 新增 PartialEvent/BudgetAlertEvent/WeatherSwapEvent/MessageEvent 类型 |
+| SSE 测试 | ✅ | 16 个新测试：helper 单测 + 流式集成（事件类型/顺序/complete 结构验证） |
+| 验证 | ✅ | 后端 183 passed + 1 skipped，前端 TS 检查 + Vite 构建通过 |
+

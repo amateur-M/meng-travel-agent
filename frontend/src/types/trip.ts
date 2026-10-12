@@ -102,6 +102,37 @@ export interface PlanStepEvent {
   message: string;
 }
 
+export interface PartialEvent {
+  day_index: number;
+  period: string;
+  activities: Activity[];
+  weather?: string;
+}
+
+export interface BudgetAlertEvent {
+  current: number;
+  limit: number;
+  warning_level: "ok" | "warning" | "over";
+  spending_ratio: number;
+  downgrade_applied: boolean;
+  suggestions: unknown[];
+  downgrade_notes: string[];
+}
+
+export interface WeatherSwapEvent {
+  day_index: number;
+  original: string;
+  replacement: string;
+  reason: string;
+  adjustment_type: "swap" | "time_shift";
+}
+
+export interface MessageEvent {
+  day: number;
+  activity: string;
+  text: string;
+}
+
 export interface PlanningStep {
   id: string;
   label: string;

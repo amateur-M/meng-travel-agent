@@ -110,8 +110,10 @@ meng-travel-agent/
 │       │   │   └── WeatherBadge.tsx
 │       │   ├── CoupleQuote/         # 情侣寄语气泡（日级侧边栏）
 │       │   │   └── CoupleQuote.tsx
-│       │   └── SSEProgress/         # Agent 进度可视化
-│       │       └── SSEProgress.tsx
+│       │   ├── SSEProgress/         # Agent 进度可视化
+│       │   │   └── SSEProgress.tsx
+│       │   └── StreamingItinerary/  # M6: 流式行程逐步渲染
+│       │       └── StreamingItinerary.tsx
 │       ├── pages/
 │       │   ├── Home.tsx             # 首页（行程输入）
 │       │   ├── PlanResult.tsx       # 行程展示页
@@ -243,3 +245,16 @@ meng-travel-agent/
 | `frontend/src/components/TimelineCard/TimelineCard.tsx` | 引入 CoupleMessage + 留白 dashed 边框 + 隐藏花费 |
 | `frontend/src/types/trip.ts` | 新增 `RhythmAdjustment` 接口 |
 | `frontend/src/services/plan.ts` | 新增 `normalizeRhythmAdjustments` |
+
+## M6 SSE 流式交互强化新增文件清单 (2026-10-03)
+
+| 文件 | 说明 |
+|------|------|
+| `backend/main.py` | `_stream_graph` 改用 `stream_mode="updates"`，新增 `_sse`/`_emit_node_events` 发射 7 类事件；删除过时 sync fallback |
+| `backend/tests/test_sse.py` | 16 个测试：SSE helper 单测 + 全流集成（事件类型/顺序/complete 结构） |
+| `frontend/src/components/StreamingItinerary/StreamingItinerary.tsx` | 流式行程逐步渲染组件（partial 事件 → 逐日逐时段卡片） |
+| `frontend/src/services/sse.ts` | `postEventStream` 支持全部 7 类事件 + 断连自动重试（最多 2 次） |
+| `frontend/src/stores/tripStore.ts` | 新增 `streamingDays`/`budgetAlert`/`weatherSwaps`/`coupleMessages` 流式状态 |
+| `frontend/src/pages/Loading.tsx` | 进度条下方渲染流式行程 + 预算/天气/寄语实时徽章 |
+| `frontend/src/types/trip.ts` | 新增 `PartialEvent`/`BudgetAlertEvent`/`WeatherSwapEvent`/`MessageEvent` 类型 |
+| `frontend/src/services/plan.ts` | `createPlan` 透传新事件回调 |

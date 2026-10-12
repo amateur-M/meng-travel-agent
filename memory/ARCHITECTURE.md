@@ -172,19 +172,19 @@ class TripPlanState(TypedDict):
 
 ### 3.2 SSE 协议
 
-端点：`GET /api/plan/{plan_id}/stream`
+端点：`POST /api/plan`（M6 实际实现：POST 流式返回，非 GET 轮询）
 
-事件类型：
+事件类型（M6 实际实现，`stream_mode="updates"` 逐节点发射）：
 
 | event | data | 说明 |
 |-------|------|------|
-| `step` | `{ "step": "fetch_weather", "message": "正在查询大理天气..." }` | 当前步骤 |
-| `partial` | `{ "day_index": 0, "period": "morning", "activities": [...] }` | 部分行程数据 |
-| `budget_alert` | `{ "current": 5200, "limit": 5000, "suggestions": [...] }` | 预算预警 |
-| `weather_swap` | `{ "original": {...}, "replacement": {...}, "reason": "雨天切换" }` | 天气方案切换 |
-| `message` | `{ "day": 1, "activity": "洱海骑行", "text": "和你一起..." }` | 情侣寄语生成 |
-| `complete` | `{ "plan_id": "uuid", "status": "completed" }` | 生成完成 |
-| `error` | `{ "code": "...", "message": "..." }` | 异常 |
+| `step` | `{ "phase": "fetch_weather", "message": "正在查询大理天气..." }` | 当前阶段（每个节点完成时发射） |
+| `partial` | `{ "day_index": 0, "period": "all", "activities": [...], "weather": "晴" }` | 逐日行程数据（plan_itinerary/rhythm_control 后发射） |
+| `budget_alert` | `{ "current": 5200, "limit": 5000, "warning_level": "over", "spending_ratio": 1.04, "downgrade_applied": true, "suggestions": [...], "downgrade_notes": [...] }` | 预算预警（budget_check 后） |
+| `weather_swap` | `{ "day_index": 0, "original": "洱海骑行", "replacement": "室内咖啡馆", "reason": "雨天切换", "adjustment_type": "swap" }` | 天气方案切换（adapt_weather 后，逐项发射） |
+| `message` | `{ "day": 1, "activity": "洱海骑行", "text": "和你一起..." }` | 情侣寄语生成（add_couple_touch 后，逐活动发射） |
+| `complete` | 完整 `TripPlanResponse` JSON（含 `warnings` 字段） | 生成完成 |
+| `error` | `{ "phase": "...", "message": "..." }` | 异常 |
 
 **客户端消费伪代码**：
 

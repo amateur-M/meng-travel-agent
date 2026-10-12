@@ -1,8 +1,11 @@
 import type {
   Activity,
   ActivityType,
+  BudgetAlertEvent,
   BudgetBreakdown,
   DayPlan,
+  MessageEvent,
+  PartialEvent,
   Period,
   PlanStepEvent,
   RhythmAdjustment,
@@ -10,11 +13,16 @@ import type {
   TripPlanResponse,
   WeatherKind,
   WeatherSwap,
+  WeatherSwapEvent,
 } from "../types/trip";
 import { postEventStream } from "./sse";
 
 interface CreatePlanOptions {
   onStep?: (event: PlanStepEvent) => void;
+  onPartial?: (payload: PartialEvent) => void;
+  onBudgetAlert?: (payload: BudgetAlertEvent) => void;
+  onWeatherSwap?: (payload: WeatherSwapEvent) => void;
+  onMessage?: (payload: MessageEvent) => void;
 }
 
 const ACTIVITY_TYPE_BY_VALUE: Record<string, ActivityType> = {
@@ -294,6 +302,10 @@ export async function createPlan(
   await postEventStream("/api/plan", {
     body: request,
     onStep: options.onStep,
+    onPartial: options.onPartial,
+    onBudgetAlert: options.onBudgetAlert,
+    onWeatherSwap: options.onWeatherSwap,
+    onMessage: options.onMessage,
     onComplete: (payload) => {
       plan = normalizePlan(payload, request);
     },

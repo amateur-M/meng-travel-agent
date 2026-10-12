@@ -1,10 +1,15 @@
 import { create } from "zustand";
 import { createPlan } from "../services/plan";
 import type {
+  Activity,
+  BudgetAlertEvent,
+  MessageEvent,
+  PartialEvent,
   PlanningStep,
   PlanStatus,
   TripPlanRequest,
   TripPlanResponse,
+  WeatherSwapEvent,
 } from "../types/trip";
 
 const DEFAULT_FORM: TripPlanRequest = {
@@ -62,6 +67,12 @@ const PHASE_STEP_INDEX: Record<string, number> = {
   output_format: 4,
 };
 
+export interface StreamingDay {
+  day_index: number;
+  weather?: string;
+  activities: Activity[];
+}
+
 interface TripStore {
   form: TripPlanRequest;
   plan: TripPlanResponse | null;
@@ -69,6 +80,10 @@ interface TripStore {
   currentStep: string;
   progress: PlanningStep[];
   error: string | null;
+  streamingDays: StreamingDay[];
+  budgetAlert: BudgetAlertEvent | null;
+  weatherSwaps: WeatherSwapEvent[];
+  coupleMessages: MessageEvent[];
   updateForm: (patch: Partial<TripPlanRequest>) => void;
   beginPlanning: () => Promise<void>;
   resetPlan: () => void;
@@ -99,6 +114,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
   currentStep: "",
   progress: freshSteps(),
   error: null,
+  streamingDays: [],
+  budgetAlert: null,
+  weatherSwaps: [],
+  coupleMessages: [],
 
   updateForm: (patch) => {
     set((state) => ({
@@ -119,6 +138,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
       error: null,
       currentStep: "正在理解你们的旅行愿望",
       progress: progressForPhase("parse_input"),
+      streamingDays: [],
+      budgetAlert: null,
+      weatherSwaps: [],
+      coupleMessages: [],
     });
 
     try {
@@ -128,6 +151,39 @@ export const useTripStore = create<TripStore>((set, get) => ({
             currentStep: event.message || "正在规划行程",
             progress: progressForPhase(event.phase),
           });
+        },
+        onPartial: (payload: PartialEvent) => {
+          set((state) => {
+            const existing = state.streamingDays.find(
+              (d) => d.day_index === payload.day_index,
+            );
+            if (existing) {
+              return {};
+            }
+            return {
+              streamingDays: [
+                ...state.streamingDays,
+                {
+                  day_index: payload.day_index,
+                  weather: payload.weather,
+                  activities: payload.activities,
+                },
+              ],
+            };
+          });
+        },
+        onBudgetAlert: (payload: BudgetAlertEvent) => {
+          set({ budgetAlert: payload });
+        },
+        onWeatherSwap: (payload: WeatherSwapEvent) => {
+          set((state) => ({
+            weatherSwaps: [...state.weatherSwaps, payload],
+          }));
+        },
+        onMessage: (payload: MessageEvent) => {
+          set((state) => ({
+            coupleMessages: [...state.coupleMessages, payload],
+          }));
         },
       });
 
@@ -156,6 +212,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
       currentStep: "",
       progress: freshSteps(),
       error: null,
+      streamingDays: [],
+      budgetAlert: null,
+      weatherSwaps: [],
+      coupleMessages: [],
     });
   },
 }));
