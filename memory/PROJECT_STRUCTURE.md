@@ -127,21 +127,21 @@ meng-travel-agent/
 │       │   └── uiStore.ts           # 主题 / 动画状态
 │       ├── types/
 │       │   └── trip.ts              # 前端行程类型定义
- │       └── config/
- │           └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
- │   ├── e2e/                         # M7: Playwright E2E 测试
- │   │   └── full_flow.spec.ts        # 完整用户流程（输入→规划→展示→降级）
- │   ├── playwright.config.ts         # M7: Playwright 配置（chromium + 自动 dev server）
- │   ├── Dockerfile                   # M7: 多阶段构建（node:20 build → nginx:alpine）
- │   ├── nginx.conf                   # M7: SPA fallback + /api 反代 + SSE 关缓冲
- │   └── .dockerignore                # M7: 排除 node_modules/dist
- │
- ├── backend/Dockerfile               # M7: python:3.13-slim + uvicorn
- ├── backend/.dockerignore            # M7: 排除测试/缓存/.env
- ├── docker-compose.yml               # M7: 生产编排（healthcheck + 依赖顺序）
- ├── .github/workflows/ci.yml         # M7: CI 流水线（backend-test → frontend-build → docker-build）
- ├── .gitignore                       # Git 忽略规则
- └── README.md                        # 项目说明
+│       └── config/
+│           └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
+│   ├── e2e/                         # M7: Playwright E2E 测试
+│   │   └── full_flow.spec.ts        # 完整用户流程（输入→规划→展示→降级）
+│   ├── playwright.config.ts         # M7: Playwright 配置（chromium + 自动 dev server）
+│   ├── Dockerfile                   # M7: 多阶段构建（node:20 build → nginx:alpine）
+│   ├── nginx.conf                   # M7: SPA fallback + /api 反代 + SSE 关缓冲
+│   └── .dockerignore                # M7: 排除 node_modules/dist
+│
+├── backend/Dockerfile               # M7: python:3.13-slim + uvicorn
+├── backend/.dockerignore            # M7: 排除测试/缓存/.env
+├── docker-compose.yml               # M7: 生产编排（healthcheck + 依赖顺序）
+├── .github/workflows/ci.yml         # M7: CI 流水线（backend-test → frontend-build → docker-build）
+├── .gitignore                       # Git 忽略规则
+└── README.md                        # 项目说明
  ```
 
 ## 目录命名对照（实际 vs ARCHITECTURE 规划）
