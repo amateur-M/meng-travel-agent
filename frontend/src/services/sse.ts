@@ -1,11 +1,17 @@
-import type { PlanStepEvent, PartialEvent, BudgetAlertEvent, WeatherSwapEvent, MessageEvent } from "../types/trip";
+import type {
+  PlanStepEvent,
+  PartialEvent,
+  BudgetAlertEvent,
+  WeatherSwapEvent,
+  MessageEvent as CoupleMessageEvent,
+} from "../types/trip";
 
 export interface SSEHandlers {
   onStep?: (event: PlanStepEvent) => void;
   onPartial?: (payload: PartialEvent) => void;
   onBudgetAlert?: (payload: BudgetAlertEvent) => void;
   onWeatherSwap?: (payload: WeatherSwapEvent) => void;
-  onMessage?: (payload: MessageEvent) => void;
+  onMessage?: (payload: CoupleMessageEvent) => void;
   onComplete?: (payload: unknown) => void;
   onError?: (payload: unknown) => void;
 }
@@ -16,7 +22,7 @@ interface PostStreamHandlers {
   onPartial?: (payload: PartialEvent) => void;
   onBudgetAlert?: (payload: BudgetAlertEvent) => void;
   onWeatherSwap?: (payload: WeatherSwapEvent) => void;
-  onMessage?: (payload: MessageEvent) => void;
+  onMessage?: (payload: CoupleMessageEvent) => void;
   onComplete?: (payload: unknown) => void;
   onError?: (payload: unknown) => void;
   maxRetries?: number;
@@ -159,8 +165,8 @@ async function consumeOnce(
         handlers.onBudgetAlert?.(event.data as BudgetAlertEvent);
       } else if (event.name === "weather_swap") {
         handlers.onWeatherSwap?.(event.data as WeatherSwapEvent);
-      } else if (event.name === "message") {
-        handlers.onMessage?.(event.data as MessageEvent);
+      } else       if (event.name === "message") {
+        handlers.onMessage?.(event.data as CoupleMessageEvent);
       } else if (event.name === "complete") {
         markComplete();
         handlers.onComplete?.(event.data);

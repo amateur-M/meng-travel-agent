@@ -4,11 +4,11 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M6 完成，SSE 流式交互强化已落地；后端测试 183 passed + 1 skipped，前端 TypeScript 类型检查通过。
+**当前阶段**：M7 完成，全部 8 个里程碑交付。Docker 一键部署 + Playwright E2E + CI 流水线已落地；后端测试 183 passed + 1 skipped，前端 TypeScript 类型检查通过。
 
 **下一步行动**：
-1. 进入 M7：测试、部署与收尾
-2. 补充 E2E 测试、Docker 化、CI 流水线
+1. 项目已全部交付，可进入维护/迭代阶段
+2. 如需扩展：多用户协作编辑、更多目的地、离线缓存等
 
 ---
 

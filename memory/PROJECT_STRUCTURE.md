@@ -127,13 +127,22 @@ meng-travel-agent/
 │       │   └── uiStore.ts           # 主题 / 动画状态
 │       ├── types/
 │       │   └── trip.ts              # 前端行程类型定义
-│       └── config/
-│           └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
-│
-├── docker-compose.yml               # Docker 编排
-├── .gitignore                       # Git 忽略规则
-└── README.md                        # 项目说明
-```
+ │       └── config/
+ │           └── tripOptions.ts       # 目的地 / 偏好 / 节奏选项
+ │   ├── e2e/                         # M7: Playwright E2E 测试
+ │   │   └── full_flow.spec.ts        # 完整用户流程（输入→规划→展示→降级）
+ │   ├── playwright.config.ts         # M7: Playwright 配置（chromium + 自动 dev server）
+ │   ├── Dockerfile                   # M7: 多阶段构建（node:20 build → nginx:alpine）
+ │   ├── nginx.conf                   # M7: SPA fallback + /api 反代 + SSE 关缓冲
+ │   └── .dockerignore                # M7: 排除 node_modules/dist
+ │
+ ├── backend/Dockerfile               # M7: python:3.13-slim + uvicorn
+ ├── backend/.dockerignore            # M7: 排除测试/缓存/.env
+ ├── docker-compose.yml               # M7: 生产编排（healthcheck + 依赖顺序）
+ ├── .github/workflows/ci.yml         # M7: CI 流水线（backend-test → frontend-build → docker-build）
+ ├── .gitignore                       # Git 忽略规则
+ └── README.md                        # 项目说明
+ ```
 
 ## 目录命名对照（实际 vs ARCHITECTURE 规划）
 
@@ -256,5 +265,22 @@ meng-travel-agent/
 | `frontend/src/services/sse.ts` | `postEventStream` 支持全部 7 类事件 + 断连自动重试（最多 2 次） |
 | `frontend/src/stores/tripStore.ts` | 新增 `streamingDays`/`budgetAlert`/`weatherSwaps`/`coupleMessages` 流式状态 |
 | `frontend/src/pages/Loading.tsx` | 进度条下方渲染流式行程 + 预算/天气/寄语实时徽章 |
-| `frontend/src/types/trip.ts` | 新增 `PartialEvent`/`BudgetAlertEvent`/`WeatherSwapEvent`/`MessageEvent` 类型 |
-| `frontend/src/services/plan.ts` | `createPlan` 透传新事件回调 |
+ | `frontend/src/types/trip.ts` | 新增 `PartialEvent`/`BudgetAlertEvent`/`WeatherSwapEvent`/`MessageEvent` 类型 |
+ | `frontend/src/services/plan.ts` | `createPlan` 透传新事件回调 |
+
+## M7 测试、部署与收尾新增文件清单 (2026-10-03)
+
+| 文件 | 说明 |
+|------|------|
+| `backend/Dockerfile` | python:3.13-slim + uvicorn 生产镜像 |
+| `backend/.dockerignore` | 排除 __pycache__/tests/.env/.venv |
+| `frontend/Dockerfile` | 多阶段构建：node:20 build → nginx:alpine 托管静态产物 |
+| `frontend/.dockerignore` | 排除 node_modules/dist/.git |
+| `frontend/nginx.conf` | SPA fallback + `/api` 反代 backend:8000 + SSE 关闭缓冲 |
+| `frontend/playwright.config.ts` | chromium + 自动启动 dev server + CI 重试 |
+| `frontend/e2e/full_flow.spec.ts` | 5 场景 E2E：首页加载、完整流程、结果页元素、重新规划、低预算降级 |
+| `docker-compose.yml` | 生产编排：healthcheck + `depends_on: service_healthy` + restart 策略 |
+| `.github/workflows/ci.yml` | 三阶段 CI：backend-test → frontend-build → docker-build |
+| `memory/DEPLOY.md` | 部署文档：本地开发 / Docker 部署 / E2E 运行 / CI 说明 |
+| `frontend/src/services/sse.ts` | 修复 `MessageEvent` 命名冲突（遮蔽 DOM 全局类型），改用 `CoupleMessageEvent` 别名 |
+| `frontend/package.json` | 新增 `e2e`/`e2e:install` 脚本 + `@playwright/test` 依赖 |

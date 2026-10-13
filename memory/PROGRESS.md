@@ -9,7 +9,7 @@
 | M4 | Done | 2026-08-30 | 2026-08-31 | Budget + weather |
 | M5 | Done | 2026-10-02 | 2026-10-02 | Rhythm control + couple experience |
 | M6 | Done | 2026-10-03 | 2026-10-03 | SSE streaming enhancement |
-| M7 | Pending | — | — | Testing + deployment |
+| M7 | Done | 2026-10-03 | 2026-10-03 | Testing + deployment |
 
 ## M0 Completion Checklist
 
@@ -242,3 +242,33 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 ### Test Result
 - Backend: **183 passed + 1 skipped** (was 167; +16 new M6 SSE tests)
 - Frontend: `tsc --noEmit` typecheck passed + Vite production build passed
+
+## M7 Completion Checklist (2026-10-03)
+
+### Docker 化
+- [x] `backend/Dockerfile` — python:3.13-slim + uvicorn 直跑
+- [x] `frontend/Dockerfile` — 多阶段构建（node:20 build → nginx:alpine 托管静态产物）
+- [x] `frontend/nginx.conf` — SPA fallback + `/api` 反代 backend:8000 + SSE 关闭缓冲
+- [x] `backend/.dockerignore` + `frontend/.dockerignore` — 排除测试/缓存/依赖
+- [x] `docker-compose.yml` 重写为生产版 — healthcheck + `depends_on: service_healthy` + `restart: unless-stopped`
+
+### CI 流水线
+- [x] `.github/workflows/ci.yml` — 三阶段：backend-test → frontend-build → docker-build
+- [x] 后端 job 无 API key 走 mock 降级路径
+- [x] 前端 job 跑 `tsc --noEmit` + `vite build`
+- [x] docker job 依赖前两个通过后构建镜像
+
+### E2E 测试
+- [x] `frontend/playwright.config.ts` — chromium + 自动启动 dev server
+- [x] `frontend/e2e/full_flow.spec.ts` — 5 个场景：首页加载、完整流程、结果页元素、重新规划、低预算降级
+- [x] `package.json` 新增 `e2e` / `e2e:install` 脚本 + `@playwright/test` 依赖
+
+### 文档
+- [x] `memory/DEPLOY.md` — 本地开发 / Docker 部署 / E2E 运行 / CI 说明 / 交付清单
+
+### 既有 Bug 修复
+- [x] `frontend/src/services/sse.ts` — `MessageEvent` 命名冲突（M6 引入的既有 bug）：自定义类型遮蔽 DOM 全局 `MessageEvent` 类型，导致 `tsc -b` 构建失败。改用 `MessageEvent as CoupleMessageEvent` 别名导入，构建通过
+
+### 验证
+- [x] `npm run build`（`tsc -b && vite build`）通过 — sse.ts 类型冲突修复后无构建错误
+- [x] E2E 测试与后端 pytest 需运行时环境，未在本次执行（CI 流水线会在 push 时自动运行）

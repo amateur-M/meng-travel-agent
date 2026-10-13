@@ -1,32 +1,45 @@
 ## Current Iteration Goals
 
-**Current Milestone**: M6 — Real-time SSE Streaming (Next)
+**Current Milestone**: M7 — Testing, Deployment & Wrap-up (Complete)
 
-**Objective**: Stream itinerary generation progress to the frontend via SSE so users see planning unfold step-by-step.
+**Objective**: E2E test coverage, Docker one-command deployment, CI pipeline, and project documentation.
 
-### M5 Completion Summary (2026-10-02)
+### M7 Completion Summary (2026-10-03)
 
-M5 is complete. Delivered:
-- `rhythm_control` node: caps each period to ≤2 activities, injects period-aware 留白 slots
-- `add_couple_touch` enhanced: 留白 templates split by period (晨光/午后/夜色), batch LLM prompt includes period guidance
-- `CoupleMessage` frontend component: period-differentiated accent bars, inline in `TimelineCard`
-- 留白 cards use dashed border + hidden cost for visual distinction
-- Backend: 167 passed + 1 skipped; frontend tsc typecheck passed
+M7 is complete. All 8 milestones delivered. Delivered:
+- Docker: `backend/Dockerfile` (python:3.13-slim), `frontend/Dockerfile` (multi-stage node→nginx), `nginx.conf` (SPA + `/api` reverse proxy + SSE no-buffer)
+- Docker Compose: production version with healthcheck + `depends_on: service_healthy` + restart policy
+- CI: `.github/workflows/ci.yml` three-stage pipeline (backend-test → frontend-build → docker-build)
+- E2E: `frontend/e2e/full_flow.spec.ts` 5 scenarios via Playwright (chromium)
+- Docs: `memory/DEPLOY.md` — local dev / Docker deploy / E2E / CI / delivery checklist
+- Bug fix: `frontend/src/services/sse.ts` `MessageEvent` naming conflict resolved (was blocking `tsc -b` build)
 
-### Tasks for Next Iteration (M6)
+### Verification
 
-1. Strengthen SSE event types: `partial` (per-day itinerary chunks), `budget_alert`, `weather_swap`, `message` (couple note)
-2. Build `useStream` hook for structured SSE consumption with auto-retry
-3. Build `StreamingItinerary` component for progressive card rendering
-4. Ensure stream output matches final result
+- `npm run build` (`tsc -b && vite build`) — passed after sse.ts fix
+- Backend: 183 passed + 1 skipped (unchanged, no backend changes in M7)
+- E2E & backend pytest require runtime environment; CI pipeline runs automatically on push
 
-### Acceptance Criteria (M6)
+### All Milestones
 
-- User sees "正在查询天气..." → "正在搜索景点..." → "正在生成行程..." → "正在添加寄语..." progressively
-- Each stage's output appears incrementally, not all at once
-- SSE disconnect triggers auto-retry
-- Streamed output equals final result
+| Milestone | Status |
+|-----------|--------|
+| M0 — Project scaffold | ✅ Done |
+| M1 — Agent engine | ✅ Done |
+| M2 — External API integration | ✅ Done |
+| M3 — Frontend UI | ✅ Done |
+| M4 — Budget + weather | ✅ Done |
+| M5 — Rhythm + couple experience | ✅ Done |
+| M6 — SSE streaming | ✅ Done |
+| M7 — Testing + deployment | ✅ Done |
+
+### Next Steps (future iteration, not planned)
+
+1. Multi-user collaborative itinerary editing (would require WebSocket)
+2. More destinations beyond the current 6-city list
+3. Offline cache / PWA support
+4. Real payment integration for booking
 
 ### Blockers
 
-None
+None — project fully delivered.
