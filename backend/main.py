@@ -3,22 +3,23 @@
 import json
 import asyncio
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 
 from schemas import TripPlanRequest, TripPlanResponse
 from agents.state import AgentState
 from agents.graph import graph
+from services.storage import plan_store, generate_plan_id
 
 logger = logging.getLogger("coupletrip")
 
 app = FastAPI(
     title="CoupleTrip API",
     description="AI-powered couple travel planning agent",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
@@ -136,22 +137,21 @@ def _emit_node_events(phase: str, update: dict) -> list[str]:
 
 # ── Plan (SSE streaming) ────────────────────────────────────────
 
-async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
+async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str, None]:
     """Run the LangGraph pipeline and yield SSE events per node.
 
     M6: uses stream_mode="updates" to get each node's partial output,
     enabling fine-grained SSE events (partial / budget_alert /
     weather_swap / message) in addition to the base step / complete /
     error events.
+
+    P0.1: accepts a plan_id, persists the final result to PostgreSQL,
+    and includes plan_id in the complete event payload.
     """
     try:
         final_state: dict = {}
         async for chunk in graph.astream(initial_state, stream_mode="updates"):
-            # stream_mode="updates" yields {node_name: partial_update}
-            # LangGraph may also emit the merged state dict as the chunk
-            # value; handle both shapes.
             if isinstance(chunk, dict):
-                # The update chunk is {node_name: update_dict}
                 for node_name, update in chunk.items():
                     if not isinstance(update, dict):
                         continue
@@ -160,6 +160,7 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
                     error = update.get("error", "")
                     if error:
                         yield _sse("error", {"phase": phase, "message": error})
+                        plan_store.update(plan_id, {"error": error}, status="error")
                         return
                     for event in _emit_node_events(phase, update):
                         yield event
@@ -174,11 +175,18 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
         except Exception as val_exc:
             logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
             payload_base = final
+        # P0.1: inject plan_id into the response
+        payload_base["plan_id"] = plan_id
         complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+
+        # P0.1: persist the completed plan
+        plan_store.update(plan_id, complete_payload, status="completed")
+
         yield _sse("complete", complete_payload)
 
     except Exception as exc:
         logger.exception("Unhandled error in SSE stream")
+        plan_store.update(plan_id, {"error": str(exc)}, status="error")
         yield _sse("error", {"phase": "unknown", "message": str(exc)})
 
 
@@ -186,8 +194,9 @@ async def _stream_graph(initial_state: dict) -> AsyncGenerator[str, None]:
 async def create_plan(request: TripPlanRequest):
     """Receive trip parameters, run the agent graph, and stream progress via SSE.
 
-    The client should connect with:
-        Accept: text/event-stream
+    P0.1: generates a plan_id upfront, persists the request as 'processing',
+    and includes plan_id in the SSE complete event so the frontend can
+    recover via GET /api/plan/{plan_id} on refresh.
 
     Events fired (M6):
         step          — per-node progress notification
@@ -195,9 +204,15 @@ async def create_plan(request: TripPlanRequest):
         budget_alert  — budget summary with downgrade info
         weather_swap  — weather-driven activity replacement
         message       — couple note for an activity
-        complete      — final TripPlanResponse JSON
+        complete      — final TripPlanResponse JSON (with plan_id)
         error         — terminal error message
     """
+    plan_id = generate_plan_id()
+
+    # Persist request immediately as 'processing'
+    request_dict = request.model_dump(mode="json")
+    plan_store.save(plan_id, request_dict, status="processing")
+
     initial_state: AgentState = {
         "user_input": {
             "origin": request.origin,
@@ -214,14 +229,52 @@ async def create_plan(request: TripPlanRequest):
     }
 
     return StreamingResponse(
-        _stream_graph(initial_state),
+        _stream_graph(initial_state, plan_id),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
+            "X-Plan-Id": plan_id,
         },
     )
+
+
+# ── REST endpoints (P0.1) ───────────────────────────────────────
+# NOTE: /api/plan/history must be declared before /api/plan/{plan_id}
+# to avoid the path param capturing "history".
+
+@app.get("/api/plan/history")
+async def list_plans(
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+):
+    """Return a paginated list of plan summaries, newest first."""
+    offset = (page - 1) * size
+    items = plan_store.list(limit=size, offset=offset)
+    return {
+        "page": page,
+        "size": size,
+        "items": items,
+    }
+
+
+@app.get("/api/plan/{plan_id}")
+async def get_plan(plan_id: str):
+    """Return a completed plan by ID (for refresh recovery)."""
+    record = plan_store.get(plan_id)
+    if record is None:
+        return JSONResponse(status_code=404, content={"detail": "Plan not found"})
+    return record
+
+
+@app.delete("/api/plan/{plan_id}")
+async def delete_plan(plan_id: str):
+    """Delete a plan record."""
+    deleted = plan_store.delete(plan_id)
+    if not deleted:
+        return JSONResponse(status_code=404, content={"detail": "Plan not found"})
+    return {"deleted": True, "plan_id": plan_id}
 
 
 if __name__ == "__main__":

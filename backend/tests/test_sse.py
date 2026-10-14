@@ -11,6 +11,7 @@ import pytest
 
 from main import _stream_graph, _emit_node_events, _sse, _phase_message
 from agents.state import AgentState
+from services.storage import generate_plan_id
 
 
 def _initial_state(destination="Dali", budget=5000, days=3, pace="relaxed"):
@@ -179,7 +180,7 @@ class TestStreamGraphIntegration:
     async def test_stream_yields_step_events(self):
         state = _initial_state(days=1)
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
         events = _parse_sse_events(chunks)
         event_names = [name for name, _ in events]
@@ -193,7 +194,7 @@ class TestStreamGraphIntegration:
     async def test_stream_yields_partial_events(self):
         state = _initial_state(days=1)
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
         events = _parse_sse_events(chunks)
         event_names = [name for name, _ in events]
@@ -205,7 +206,7 @@ class TestStreamGraphIntegration:
     async def test_stream_yields_message_events(self):
         state = _initial_state(days=1)
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
         events = _parse_sse_events(chunks)
         event_names = [name for name, _ in events]
@@ -225,7 +226,7 @@ class TestStreamGraphIntegration:
     async def test_stream_complete_has_valid_response(self):
         state = _initial_state(days=2)
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
         events = _parse_sse_events(chunks)
 
@@ -242,7 +243,7 @@ class TestStreamGraphIntegration:
         """Steps should precede complete; partials should come before messages."""
         state = _initial_state(days=1)
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
         events = _parse_sse_events(chunks)
         event_names = [name for name, _ in events]
@@ -266,7 +267,7 @@ class TestStreamGraphIntegration:
         # Inject an error by breaking the graph input
         state["user_input"] = None
         chunks = []
-        async for chunk in _stream_graph(state):
+        async for chunk in _stream_graph(state, generate_plan_id()):
             chunks.append(chunk)
 
         # Should still produce some output (either error or complete)

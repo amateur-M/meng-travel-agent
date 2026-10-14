@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -8,7 +8,7 @@ import {
   Sparkles,
   WalletCards,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { BudgetAlerts } from "../components/BudgetAlerts/BudgetAlerts";
 import { BudgetBar } from "../components/BudgetBar/BudgetBar";
 import { CoupleQuote } from "../components/CoupleQuote/CoupleQuote";
@@ -20,13 +20,33 @@ import { useTripStore } from "../stores/tripStore";
  */
 export function PlanResult() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const planIdParam = searchParams.get("plan_id");
   const plan = useTripStore((state) => state.plan);
+  const loadPlan = useTripStore((state) => state.loadPlan);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!plan) {
+    if (!plan && planIdParam) {
+      setLoading(true);
+      loadPlan(planIdParam).then((ok) => {
+        if (!ok) {
+          navigate("/", { replace: true });
+        }
+        setLoading(false);
+      });
+    } else if (!plan && !planIdParam) {
       navigate("/", { replace: true });
     }
-  }, [navigate, plan]);
+  }, [navigate, plan, planIdParam, loadPlan]);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-cream-50 text-ink-500">
+        <p className="text-sm">正在恢复行程...</p>
+      </div>
+    );
+  }
 
   if (!plan) {
     return null;

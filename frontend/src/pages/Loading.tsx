@@ -70,7 +70,9 @@ export function Loading() {
 
   useEffect(() => {
     if (status === "ready") {
-      const timer = window.setTimeout(() => navigate("/result"), 280);
+      const planId = useTripStore.getState().planId;
+      const target = planId ? `/result?plan_id=${planId}` : "/result";
+      const timer = window.setTimeout(() => navigate(target), 280);
       return () => window.clearTimeout(timer);
     }
   }, [navigate, status]);

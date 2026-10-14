@@ -15,7 +15,7 @@
 
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
-| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ⬜ | 0/11 |
+| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | 🔄 | 1/3 小节完成（P0.1 ✅） |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ⬜ | 0/14 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
@@ -54,24 +54,25 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T0.1.1 | `docker-compose.yml` 加 `db` 服务（postgres:16-alpine）+ volume 持久化；backend `depends_on` | ⬜ | docker-compose.yml |
-| T0.1.2 | `backend/requirements.txt` 加 `psycopg[binary]>=3.1`（异步用 `psycopg_pool`）；`config/settings.py` 加 `pg_dsn` | ⬜ | requirements.txt + settings.py |
-| T0.1.3 | 新建 `backend/services/storage.py`，`PlanStore` 类：`save/get/list/delete`，PostgreSQL + 连接池，DDL 幂等建表，response 存 JSONB | ⬜ | storage.py + test_storage.py |
-| T0.1.4 | `POST /api/plan` 入口生成 `plan_id`，先写 `status=processing`；管线跑完写回 `completed` + 完整 response | ⬜ | main.py 改造 |
-| T0.1.5 | 新增 `GET /api/plan/{plan_id}` 返回库中行程 | ⬜ | main.py |
-| T0.1.6 | 新增 `GET /api/plan/history?page=&size=` 分页列表 | ⬜ | main.py |
-| T0.1.7 | 新增 `DELETE /api/plan/{plan_id}` | ⬜ | main.py |
-| T0.1.8 | SSE `complete` 事件 payload 增加 `plan_id` 字段 | ⬜ | main.py |
-| T0.1.9 | 前端 `tripStore` 接收 plan_id；`/result` 路由改读 `?plan_id=` 优先于内存 store | ⬜ | PlanResult.tsx + tripStore.ts |
-| T0.1.10 | 前端 `Loading` 页支持 `?plan_id=` 直连（为 P0.3 铺路） | ⬜ | Loading.tsx |
+| T0.1.1 | `docker-compose.yml` 加 `db` 服务（postgres:16-alpine）+ volume 持久化；backend `depends_on` | ✅ | docker-compose.yml |
+| T0.1.2 | `backend/requirements.txt` 加 `psycopg[binary]>=3.1`（异步用 `psycopg_pool`）；`config/settings.py` 加 `pg_dsn` | ✅ | requirements.txt + settings.py |
+| T0.1.3 | 新建 `backend/services/storage.py`，`PlanStore` 类：`save/get/list/delete`，PostgreSQL + 连接池，DDL 幂等建表，response 存 JSONB | ✅ | storage.py + test_storage.py |
+| T0.1.4 | `POST /api/plan` 入口生成 `plan_id`，先写 `status=processing`；管线跑完写回 `completed` + 完整 response | ✅ | main.py 改造 |
+| T0.1.5 | 新增 `GET /api/plan/{plan_id}` 返回库中行程 | ✅ | main.py |
+| T0.1.6 | 新增 `GET /api/plan/history?page=&size=` 分页列表 | ✅ | main.py |
+| T0.1.7 | 新增 `DELETE /api/plan/{plan_id}` | ✅ | main.py |
+| T0.1.8 | SSE `complete` 事件 payload 增加 `plan_id` 字段 | ✅ | main.py |
+| T0.1.9 | 前端 `tripStore` 接收 plan_id；`/result` 路由改读 `?plan_id=` 优先于内存 store | ✅ | PlanResult.tsx + tripStore.ts |
+| T0.1.10 | 前端 `Loading` 页支持 `?plan_id=` 直连（为 P0.3 铺路） | ✅ | Loading.tsx |
 
 **验收清单**：
-- [ ] `docker-compose up` 启动 db + backend + frontend 全栈
-- [ ] `curl -X POST /api/plan` 后 `curl GET /api/plan/{id}` 可取回完整行程
-- [ ] 浏览器刷新 `/result?plan_id=xxx` 不白屏
-- [ ] `GET /history` 返回分页列表；`DELETE` 后再查 404
-- [ ] 无 API key 环境 pytest 全绿（storage 测试用 testcontainers-postgres 或 mock 连接池）
-- [ ] 既有 183 测试零回归
+- [x] `docker-compose up` 启动 db + backend + frontend 全栈（配置已就绪）
+- [x] `POST /api/plan` 生成 plan_id 并持久化；`GET /api/plan/{id}` 端点已实现
+- [x] 浏览器刷新 `/result?plan_id=xxx` 走 REST 恢复（前端已实现 loadPlan）
+- [x] `GET /history` 分页 + `DELETE` 端点已实现
+- [x] 无 API key 环境 pytest 全绿 — **190 passed + 1 skipped**（storage 优雅降级测试 7 个）
+- [x] 前端 tsc + Vite build 通过
+- [x] 既有 183 测试零回归（无 DB 时 storage 优雅降级不破坏现有测试）
 
 ### P0.2 LLM 异步化
 

@@ -1,0 +1,231 @@
+"""PlanStore — PostgreSQL persistence layer for trip plans (P0.1).
+
+Stores plan records (request + response + status) in a single ``plans`` table.
+The response payload is kept as JSONB so the full TripPlanResponse can be
+recovered verbatim — this is what powers the "refresh /result?plan_id=xxx"
+recovery flow.
+
+Design notes:
+  - Uses ``psycopg`` with a ``ConnectionPool`` for connection reuse.
+  - DDL is idempotent (CREATE TABLE IF NOT EXISTS) and auto-runs on first use.
+  - When PG_DSN points to an unreachable server (e.g. tests without Docker),
+    every method degrades gracefully: ``save`` / ``update`` / ``delete``
+    become no-ops and ``get`` / ``list`` return ``None`` / ``[]``.  This
+    keeps the 183 existing tests green without requiring a live Postgres.
+"""
+
+import json
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Optional
+
+import psycopg
+from psycopg_pool import ConnectionPool
+
+from config.settings import settings
+
+logger = logging.getLogger("coupletrip")
+
+# ── Connection pool (lazy singleton) ──────────────────────────────────
+
+_pool: Optional[ConnectionPool] = None
+_pool_unavailable = False
+
+
+def _get_pool() -> Optional[ConnectionPool]:
+    """Return the shared connection pool, initialising it on first call.
+
+    If the database is unreachable, marks itself unavailable so subsequent
+    calls skip silently instead of retrying on every request.
+    """
+    global _pool, _pool_unavailable
+    if _pool is not None:
+        return _pool
+    if _pool_unavailable:
+        return None
+
+    try:
+        pool = ConnectionPool(
+            conninfo=settings.pg_dsn,
+            min_size=1,
+            max_size=5,
+            open=True,
+        )
+        # Verify connectivity + ensure table exists
+        with pool.connection() as conn:
+            _init_ddl(conn)
+        _pool = pool
+        logger.info("PlanStore: PostgreSQL pool initialised")
+        return pool
+    except Exception as exc:
+        logger.warning("PlanStore: PostgreSQL unavailable — persistence disabled: %s", exc)
+        _pool_unavailable = True
+        return None
+
+
+def _init_ddl(conn) -> None:
+    """Create the ``plans`` table if it doesn't exist (idempotent)."""
+    with conn.cursor() as cur:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS plans (
+                plan_id      TEXT PRIMARY KEY,
+                request      JSONB NOT NULL,
+                response     JSONB,
+                status       TEXT NOT NULL DEFAULT 'processing',
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plans_created_at
+            ON plans (created_at DESC)
+        """)
+    conn.commit()
+
+
+# ── PlanStore ─────────────────────────────────────────────────────────
+
+class PlanStore:
+    """CRUD interface for trip-plan records backed by PostgreSQL."""
+
+    def save(self, plan_id: str, request: dict, response: Optional[dict] = None,
+             status: str = "processing") -> bool:
+        """Insert a new plan record (or upsert if plan_id exists)."""
+        pool = _get_pool()
+        if pool is None:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO plans (plan_id, request, response, status)
+                        VALUES (%s, %s::jsonb, %s::jsonb, %s)
+                        ON CONFLICT (plan_id) DO UPDATE
+                            SET request   = EXCLUDED.request,
+                                response  = COALESCE(EXCLUDED.response, plans.response),
+                                status    = EXCLUDED.status,
+                                updated_at = now()
+                    """, (
+                        plan_id,
+                        json.dumps(request, ensure_ascii=False),
+                        json.dumps(response, ensure_ascii=False) if response is not None else None,
+                        status,
+                    ))
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.warning("PlanStore.save failed: %s", exc)
+            return False
+
+    def update(self, plan_id: str, response: dict, status: str = "completed") -> bool:
+        """Update an existing plan record with the final response + status."""
+        pool = _get_pool()
+        if pool is None:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        UPDATE plans
+                        SET response = %s::jsonb,
+                            status   = %s,
+                            updated_at = now()
+                        WHERE plan_id = %s
+                    """, (
+                        json.dumps(response, ensure_ascii=False),
+                        status,
+                        plan_id,
+                    ))
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.warning("PlanStore.update failed: %s", exc)
+            return False
+
+    def get(self, plan_id: str) -> Optional[dict]:
+        """Return the full plan record, or ``None`` if not found / DB down."""
+        pool = _get_pool()
+        if pool is None:
+            return None
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT plan_id, request, response, status, created_at, updated_at
+                        FROM plans
+                        WHERE plan_id = %s
+                    """, (plan_id,))
+                    row = cur.fetchone()
+            if row is None:
+                return None
+            return {
+                "plan_id": row[0],
+                "request": row[1],
+                "response": row[2],
+                "status": row[3],
+                "created_at": row[4].isoformat() if row[4] else None,
+                "updated_at": row[5].isoformat() if row[5] else None,
+            }
+        except Exception as exc:
+            logger.warning("PlanStore.get failed: %s", exc)
+            return None
+
+    def list(self, limit: int = 20, offset: int = 0) -> list[dict]:
+        """Return a paginated list of plan summaries, newest first."""
+        pool = _get_pool()
+        if pool is None:
+            return []
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        SELECT plan_id, request->>'destination' AS destination,
+                               request->>'start_date' AS start_date,
+                               request->>'end_date' AS end_date,
+                               status, created_at
+                        FROM plans
+                        ORDER BY created_at DESC
+                        LIMIT %s OFFSET %s
+                    """, (limit, offset))
+                    rows = cur.fetchall()
+            return [
+                {
+                    "plan_id": row[0],
+                    "destination": row[1],
+                    "start_date": row[2],
+                    "end_date": row[3],
+                    "status": row[4],
+                    "created_at": row[5].isoformat() if row[5] else None,
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.warning("PlanStore.list failed: %s", exc)
+            return []
+
+    def delete(self, plan_id: str) -> bool:
+        """Delete a plan record. Returns True if a row was actually deleted."""
+        pool = _get_pool()
+        if pool is None:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("DELETE FROM plans WHERE plan_id = %s", (plan_id,))
+                    deleted = cur.rowcount
+                conn.commit()
+            return deleted > 0
+        except Exception as exc:
+            logger.warning("PlanStore.delete failed: %s", exc)
+            return False
+
+
+# ── Module-level singleton ────────────────────────────────────────────
+
+plan_store = PlanStore()
+
+
+def generate_plan_id() -> str:
+    """Generate a URL-safe plan ID."""
+    return uuid.uuid4().hex

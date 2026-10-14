@@ -16,6 +16,7 @@ import type {
   WeatherSwapEvent,
 } from "../types/trip";
 import { postEventStream } from "./sse";
+import { api, ApiError } from "./api";
 
 interface CreatePlanOptions {
   onStep?: (event: PlanStepEvent) => void;
@@ -320,3 +321,40 @@ export async function createPlan(
 
   return plan;
 }
+
+/**
+ * 通过 plan_id 从后端 REST 端点恢复已完成的行程（刷新恢复用）。
+ * 返回 null 表示行程不存在或后端不可达。
+ */
+export async function fetchPlan(planId: string): Promise<TripPlanResponse | null> {
+  try {
+    const response = await api.get(`/api/plan/${planId}`);
+    const record = response.data as {
+      response?: unknown;
+      status?: string;
+      request?: TripPlanRequest;
+    };
+
+    if (!record.response) {
+      return null;
+    }
+
+    const request = record.request ?? DEFAULT_REQUEST;
+    return normalizePlan(record.response, request);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null;
+    }
+    return null;
+  }
+}
+
+const DEFAULT_REQUEST: TripPlanRequest = {
+  origin: "",
+  destination: "",
+  start_date: "",
+  end_date: "",
+  budget: 0,
+  preferences: [],
+  pace: "轻松",
+};

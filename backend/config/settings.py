@@ -56,5 +56,11 @@ class Settings:
     maps_api_key: str = os.getenv("MAPS_API_KEY", "")
     maps_provider: str = os.getenv("MAPS_PROVIDER", "amap")
 
+    # PostgreSQL (P0.1 行程持久化)
+    pg_dsn: str = os.getenv(
+        "PG_DSN",
+        "postgresql://coupletrip:coupletrip_dev@localhost:5432/coupletrip",
+    )
+
 
 settings = Settings()

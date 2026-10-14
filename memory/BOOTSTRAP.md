@@ -35,7 +35,7 @@
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 升级方案已规划完毕（P0 地基修复 → P1 对话式 → P2 内容质量 → P3 工程化），尚未开始执行。下一步是 P0.1 行程持久化（PostgreSQL + REST 端点补齐）。执行计划中每个任务带唯一 ID 与 ⬜/🔄/✅ 状态标记，进度可在 UPGRADE_V2_EXECUTION_PLAN.md 顶部总览表查看。
+当前项目状态：M0-M7 已交付，V2 升级执行中。P0.1 行程持久化已完成 ✅（PostgreSQL + REST 端点补齐 + 前端 plan_id 恢复），后端 190 passed + 1 skipped，前端 tsc+build 通过。下一步是 P0.2 LLM 异步化。执行计划中每个任务带唯一 ID 与 ⬜/🔄/✅ 状态标记，进度可在 UPGRADE_V2_EXECUTION_PLAN.md 顶部总览表查看。
 
 ---
 

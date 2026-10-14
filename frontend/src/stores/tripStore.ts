@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createPlan } from "../services/plan";
+import { createPlan, fetchPlan } from "../services/plan";
 import type {
   Activity,
   BudgetAlertEvent,
@@ -76,6 +76,7 @@ export interface StreamingDay {
 interface TripStore {
   form: TripPlanRequest;
   plan: TripPlanResponse | null;
+  planId: string | null;
   status: PlanStatus;
   currentStep: string;
   progress: PlanningStep[];
@@ -86,6 +87,7 @@ interface TripStore {
   coupleMessages: MessageEvent[];
   updateForm: (patch: Partial<TripPlanRequest>) => void;
   beginPlanning: () => Promise<void>;
+  loadPlan: (planId: string) => Promise<boolean>;
   resetPlan: () => void;
 }
 
@@ -110,6 +112,7 @@ function progressForPhase(phase: string): PlanningStep[] {
 export const useTripStore = create<TripStore>((set, get) => ({
   form: DEFAULT_FORM,
   plan: null,
+  planId: null,
   status: "idle",
   currentStep: "",
   progress: freshSteps(),
@@ -189,6 +192,7 @@ export const useTripStore = create<TripStore>((set, get) => ({
 
       set({
         plan,
+        planId: plan.plan_id,
         status: "ready",
         currentStep: "行程已就绪",
         progress: PLANNING_STEPS.map((step) => ({ ...step, status: "done" })),
@@ -204,10 +208,30 @@ export const useTripStore = create<TripStore>((set, get) => ({
     }
   },
 
+  loadPlan: async (planId: string) => {
+    try {
+      const result = await fetchPlan(planId);
+      if (!result) {
+        return false;
+      }
+      set({
+        plan: result,
+        planId: result.plan_id,
+        status: "ready",
+        currentStep: "行程已就绪",
+        progress: PLANNING_STEPS.map((step) => ({ ...step, status: "done" })),
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   resetPlan: () => {
     set({
       form: DEFAULT_FORM,
       plan: null,
+      planId: null,
       status: "idle",
       currentStep: "",
       progress: freshSteps(),
