@@ -37,43 +37,47 @@ class TestGraphInvoke:
             },
             "current_phase": "start",
             "error": "",
-            "warnings": [],   # P2
-            # P6: retry_count removed
+            "warnings": [],
         }
 
-    def test_full_graph_completes_dali(self):
+    @pytest.mark.asyncio
+    async def test_full_graph_completes_dali(self):
         """Smoke test: graph completes end-to-end for Dali."""
         state = self._initial_state()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert "plan_id" in final
         assert final["status"] == "completed"
         assert len(final["days"]) == 3
 
-    def test_full_graph_completes_lijiang(self):
+    @pytest.mark.asyncio
+    async def test_full_graph_completes_lijiang(self):
         """Smoke test: graph completes for Lijiang."""
         state = self._initial_state(destination="Lijiang", budget=6000, days=3)
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert len(final["days"]) == 3
 
-    def test_full_graph_completes_sanya(self):
+    @pytest.mark.asyncio
+    async def test_full_graph_completes_sanya(self):
         """Smoke test: graph completes for Sanya."""
         state = self._initial_state(destination="Sanya", budget=8000, days=2)
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert final["status"] == "completed"
 
-    def test_single_day_trip(self):
+    @pytest.mark.asyncio
+    async def test_single_day_trip(self):
         """Graph handles 1-day trips."""
         state = self._initial_state(destination="Dali", budget=3000, days=1)
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert len(final["days"]) == 1
 
-    def test_budget_breakdown_present(self):
+    @pytest.mark.asyncio
+    async def test_budget_breakdown_present(self):
         state = self._initial_state()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         bb = result.get("budget_breakdown", {})
         assert "total_budget" in bb
         assert "total_spent" in bb
@@ -81,44 +85,52 @@ class TestGraphInvoke:
         assert "warning_level" in bb
         assert "spending_ratio" in bb
 
-    def test_weather_swaps_present_in_final(self):
+    @pytest.mark.asyncio
+    async def test_weather_swaps_present_in_final(self):
         state = self._initial_state()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert "weather_swaps" in final
         assert isinstance(final["weather_swaps"], list)
 
-    def test_couple_notes_present(self):
+    @pytest.mark.asyncio
+    async def test_couple_notes_present(self):
         state = self._initial_state()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         notes = result.get("couple_notes", [])
         assert len(notes) > 0
 
-    def test_every_activity_has_couple_note(self):
+    @pytest.mark.asyncio
+    async def test_every_activity_has_couple_note(self):
         state = self._initial_state()
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         for day in result.get("final_itinerary", {}).get("days", []):
             for act in day.get("activities", []):
                 assert "couple_note" in act, f"Activity missing couple_note"
                 assert act["couple_note"] != ""
 
-    def test_unknown_destination_still_completes(self):
+    @pytest.mark.asyncio
+    async def test_unknown_destination_still_completes(self):
         """Graph should complete even for unmapped destinations."""
         state = self._initial_state(destination="NowhereVille")
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert final["status"] == "completed"
 
-    def test_packed_pace(self):
+    @pytest.mark.asyncio
+    async def test_packed_pace(self):
         state = self._initial_state(pace="packed", days=1)
-        result = graph.invoke(state)
+        result = await graph.ainvoke(state)
         final = result.get("final_itinerary", {})
         assert len(final["days"]) == 1
 
-    def test_graph_stream_mode(self):
+    @pytest.mark.asyncio
+    async def test_graph_stream_mode(self):
         """Verify stream mode yields chunks."""
         state = self._initial_state(days=1)
-        chunks = list(graph.stream(state, stream_mode="values"))
+        chunks = []
+        async for chunk in graph.astream(state, stream_mode="values"):
+            chunks.append(chunk)
         assert len(chunks) > 0
         last = chunks[-1]
         assert "final_itinerary" in last or "current_phase" in last

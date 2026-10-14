@@ -10,7 +10,7 @@ from typing import Any
 
 from agents.state import AgentState
 from prompts import WEATHER_ADAPT_PROMPT, fill_prompt
-from services.llm import call_llm
+from services.llm import acall_llm
 
 
 # Tidy: _fill_prompt removed — now imported as fill_prompt from prompts package.
@@ -268,8 +268,11 @@ def _apply_llm_swaps(
     return swaps
 
 
-def adapt_weather(state: AgentState) -> dict[str, Any]:
-    """Apply weather-based adjustments to the draft itinerary."""
+async def adapt_weather(state: AgentState) -> dict[str, Any]:
+    """Apply weather-based adjustments to the draft itinerary.
+
+    P0.2: converted to async for non-blocking LLM calls.
+    """
     weather_text, itinerary_text = _format_weather_and_itinerary(state)
 
     adapt_prompt = fill_prompt(
@@ -278,7 +281,7 @@ def adapt_weather(state: AgentState) -> dict[str, Any]:
         itinerary_summary=itinerary_text,
     )
 
-    result = call_llm(
+    result = await acall_llm(
         system_prompt="你是一个细心的行程调整助手。",
         user_prompt=adapt_prompt,
         mock_response={"swaps": [], "time_shifts": [], "warnings": []},

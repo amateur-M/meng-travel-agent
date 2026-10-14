@@ -10,7 +10,7 @@ from tools.poi_search_tool import poi_search_tool
 logger = logging.getLogger("coupletrip")
 
 
-def search_poi(state: AgentState) -> Dict[str, Any]:
+async def search_poi(state: AgentState) -> Dict[str, Any]:
     """Search attractions for the destination via the live Amap POI tool.
 
     P2: on failure, append a warning instead of setting `error` so the

@@ -10,7 +10,7 @@ from datetime import date
 from agents.state import AgentState
 
 
-def parse_input(state: AgentState) -> Dict[str, Any]:
+async def parse_input(state: AgentState) -> Dict[str, Any]:
     """Normalise raw user_input into parsed_params.
 
     The raw input dict arrives via POST /api/plan and is stored in

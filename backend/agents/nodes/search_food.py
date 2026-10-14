@@ -10,7 +10,7 @@ from tools.food_search_tool import food_search_tool
 logger = logging.getLogger("coupletrip")
 
 
-def search_food(state: AgentState) -> Dict[str, Any]:
+async def search_food(state: AgentState) -> Dict[str, Any]:
     """Search restaurants for the destination via the live Amap food tool.
 
     P2: on failure, append a warning instead of setting `error` so the

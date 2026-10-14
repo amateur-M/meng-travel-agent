@@ -182,7 +182,7 @@ def _normalise_day(day: dict) -> tuple[dict, list]:
     return day_out, day_adjustments
 
 
-def rhythm_control(state: AgentState) -> Dict[str, Any]:
+async def rhythm_control(state: AgentState) -> Dict[str, Any]:
     """Enforce three-period rhythm constraints on the draft itinerary.
 
     Returns:

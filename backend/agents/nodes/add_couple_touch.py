@@ -10,7 +10,7 @@ import logging
 from typing import Dict, Any, List
 
 from agents.state import AgentState
-from services.llm import call_llm
+from services.llm import acall_llm
 
 logger = logging.getLogger("coupletrip")
 
@@ -103,7 +103,7 @@ def _trim_message(text: str) -> str | None:
     return text if len(text) >= 6 else None
 
 
-def _generate_batch_llm_messages(
+async def _generate_batch_llm_messages(
     destination: str,
     activities_meta: List[dict],
 ) -> List[str | None]:
@@ -112,6 +112,8 @@ def _generate_batch_llm_messages(
     Returns a list parallel to *activities_meta*: each element is the
     generated message, or None when the LLM could not produce one.
     Returns a list of Nones when no API key is configured.
+
+    P0.2: converted to async via acall_llm.
     """
     n = len(activities_meta)
     if n == 0:
@@ -137,7 +139,7 @@ def _generate_batch_llm_messages(
     )
 
     try:
-        result = call_llm(
+        result = await acall_llm(
             system_prompt=(
                 "你是一个温柔细腻的情感文案写手。"
                 "请严格按照 JSON 数组格式返回结果，不要添加任何前缀或后缀。"
@@ -176,12 +178,14 @@ def _generate_batch_llm_messages(
         return fallback
 
 
-def add_couple_touch(state: AgentState) -> Dict[str, Any]:
+async def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     """Append a couple_note to every activity in the draft itinerary.
 
     P7: makes a single batch LLM call for all activities instead of one
     call per activity.  Falls back to the M1 template bank when the LLM
     is unavailable or returns incomplete results.
+
+    P0.2: converted to async for non-blocking LLM calls.
 
     Returns:
         Partial state with draft_itinerary activities enriched,
@@ -217,7 +221,7 @@ def add_couple_touch(state: AgentState) -> Dict[str, Any]:
             })
 
     # ── Phase 2: single batch LLM call (P7) ────────────────────────
-    llm_messages = _generate_batch_llm_messages(destination, activities_meta)
+    llm_messages = await _generate_batch_llm_messages(destination, activities_meta)
 
     # ── Phase 3: assign messages, falling back to templates ────────
     for i, (day_idx, act) in enumerate(flat):

@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 from agents.state import AgentState
 from prompts import BUDGET_DOWNGRADE_PROMPT, fill_prompt
-from services.llm import call_llm
+from services.llm import acall_llm
 
 
 def _sum_costs(draft: dict) -> float:
@@ -205,12 +205,13 @@ def _format_itinerary_summary(draft: dict) -> str:
 # Tidy: _fill_prompt removed — now imported as fill_prompt from prompts package.
 
 
-def budget_check(state: AgentState) -> Dict[str, Any]:
+async def budget_check(state: AgentState) -> Dict[str, Any]:
     """Audit the draft itinerary's spending against the total budget.
 
     P6: retry_count removed — the conditional retry loop in graph.py was
     unreachable after M4 made budget_check always apply a deterministic
     in-place downgrade.  The node now simply downgrades and moves on.
+    P0.2: converted to async for non-blocking LLM calls.
     """
     params = state.get("parsed_params", {})
     draft = state.get("draft_itinerary", {})
@@ -240,7 +241,7 @@ def budget_check(state: AgentState) -> Dict[str, Any]:
             itinerary_summary=summary,
         )
 
-        result = call_llm(
+        result = await acall_llm(
             system_prompt="You are a travel budget advisor.",
             user_prompt=downgrade_prompt,
             mock_response={

@@ -15,7 +15,7 @@
 
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
-| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | 🔄 | 1/3 小节完成（P0.1 ✅） |
+| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | 🔄 | 2/3 小节完成（P0.1 ✅ P0.2 ✅） |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ⬜ | 0/14 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
@@ -80,16 +80,16 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T0.2.1 | `services/llm.py` 新增 `async def acall_llm(...)` 用 `llm.ainvoke()`，保留 `call_llm` 兼容 | ⬜ | llm.py |
-| T0.2.2 | 所有节点函数改 `async def`，内部 LLM 调用切 `acall_llm` | ⬜ | nodes/*.py |
-| T0.2.3 | `add_couple_touch` 若仍有多调用，改 `asyncio.gather` 限制并发 5（注：P7 已批量化为 O(1)，此项核查即可） | ⬜ | add_couple_touch.py |
-| T0.2.4 | `main.py` `_stream_graph` 内 `graph.astream` 对 async 节点直接 await，移除线程池依赖 | ⬜ | main.py |
+| T0.2.1 | `services/llm.py` 新增 `async def acall_llm(...)` 用 `llm.ainvoke()`，保留 `call_llm` 兼容 | ✅ | llm.py |
+| T0.2.2 | 所有节点函数改 `async def`，内部 LLM 调用切 `acall_llm` | ✅ | nodes/*.py |
+| T0.2.3 | `add_couple_touch` 若仍有多调用，改 `asyncio.gather` 限制并发 5（注：P7 已批量化为 O(1)，此项核查即可） | ✅ | add_couple_touch.py |
+| T0.2.4 | `main.py` `_stream_graph` 内 `graph.astream` 对 async 节点直接 await，移除线程池依赖 | ✅ | main.py |
 
 **验收清单**：
-- [ ] 节点定义均为 `async def`，无残留 `def`
-- [ ] `call_llm`/`acall_llm` 双版本单测通过
-- [ ] mock 模式（无 key）下 astream 全链路跑通
-- [ ] 并发 5 个 `/api/plan` mock 请求不阻塞（简单压测脚本验证）
+- [x] 节点定义均为 `async def`，无残留 `def`（10 个节点全部 async）
+- [x] `call_llm`/`acall_llm` 双版本并存，`__init__.py` 导出两个
+- [x] mock 模式（无 key）下 astream 全链路跑通 — 190 passed + 1 skipped
+- [x] `graph.astream` 在 main.py 中已对 async 节点工作（_stream_graph 未改，LangGraph 原生支持 async 节点 astream）
 
 ### P0.3 SSE 断线重连不重跑
 

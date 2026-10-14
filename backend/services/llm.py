@@ -155,3 +155,43 @@ def call_llm(
         if mock_response is not None:
             return mock_response
         raise
+
+
+# ---------------------------------------------------------------------------
+# Async API (P0.2)
+# ---------------------------------------------------------------------------
+
+async def acall_llm(
+    system_prompt: str,
+    user_prompt: str,
+    mock_response: dict | None = None,
+    provider: str | None = None,
+) -> dict:
+    """Async counterpart of call_llm using llm.ainvoke().
+
+    When the provider's API key is absent, returns mock_response
+    synchronously (no I/O needed) so the event loop is not blocked.
+    """
+    provider = provider or settings.default_llm_provider
+    llm = _get_llm(provider)
+
+    if llm is None:
+        return mock_response or {"error": f"API key not configured for provider '{provider}'"}
+
+    try:
+        messages = [
+            SystemMessage(content=system_prompt),
+            HumanMessage(content=user_prompt),
+        ]
+        response = await llm.ainvoke(messages)
+        content = response.content if hasattr(response, "content") else str(response)
+        return json.loads(_extract_json(content))
+    except Exception as e:
+        logger.warning(
+            "LLM async call failed (provider=%s): %s; using mock_response",
+            provider, e,
+            exc_info=True,
+        )
+        if mock_response is not None:
+            return mock_response
+        raise

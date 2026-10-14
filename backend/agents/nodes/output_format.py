@@ -49,7 +49,7 @@ def _normalise_days(params: dict, draft: dict, weather: dict) -> list:
     return normalised
 
 
-def output_format(state: AgentState) -> Dict[str, Any]:
+async def output_format(state: AgentState) -> Dict[str, Any]:
     """Package draft_itinerary + budget_breakdown + couple_notes into final form.
 
     This is a pure transform node — no LLM call, no side effects.

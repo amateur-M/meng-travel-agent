@@ -10,7 +10,7 @@ from typing import Dict, Any
 
 from agents.state import AgentState
 from prompts import SYSTEM_PROMPT, PLAN_ITINERARY_PROMPT
-from services.llm import call_llm
+from services.llm import acall_llm
 
 
 def _build_prompt(state: AgentState) -> str:
@@ -138,11 +138,11 @@ def _mock_itinerary(state: AgentState) -> dict:
     return {"days": days}
 
 
-def plan_itinerary(state: AgentState) -> Dict[str, Any]:
+async def plan_itinerary(state: AgentState) -> Dict[str, Any]:
     """Generate a day-by-day itinerary using the LLM.
 
     If OPENAI_API_KEY is configured, the real LLM is called via
-    services.llm.call_llm().  Otherwise, falls back to _mock_itinerary
+    services.llm.acall_llm().  Otherwise, falls back to _mock_itinerary
     so the graph remains testable.
 
     Returns:
@@ -150,7 +150,7 @@ def plan_itinerary(state: AgentState) -> Dict[str, Any]:
     """
     prompt = _build_prompt(state)
 
-    draft = call_llm(
+    draft = await acall_llm(
         system_prompt=SYSTEM_PROMPT,
         user_prompt=prompt,
         mock_response=_mock_itinerary(state),

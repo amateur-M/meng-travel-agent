@@ -11,7 +11,7 @@ from agents.state import AgentState
 from tools.weather_tool import weather_tool_sync
 
 
-def fetch_weather(state: AgentState) -> Dict[str, Any]:
+async def fetch_weather(state: AgentState) -> Dict[str, Any]:
     """Look up weather for the destination + date range.
 
     Uses num_days from parsed_params to determine how many forecast
