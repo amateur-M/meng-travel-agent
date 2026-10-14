@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Chat } from "./pages/Chat";
 import { Home } from "./pages/Home";
 import { Loading } from "./pages/Loading";
 import { PlanResult } from "./pages/PlanResult";
@@ -15,7 +16,8 @@ function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
+        <Route path="/" element={<Chat />} />
+        <Route path="/form" element={<Home />} />
         <Route path="/loading" element={<Loading />} />
         <Route path="/result" element={<PlanResult />} />
       </Routes>

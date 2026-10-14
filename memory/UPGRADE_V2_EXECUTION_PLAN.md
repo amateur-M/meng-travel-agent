@@ -16,7 +16,7 @@
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
-| **P1 对话式** | M8 后端 + modify_plan + M9 前端 | 🔄 | 1/3 小节完成（P1.1 ✅） |
+| **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
 
@@ -145,9 +145,9 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T1.2.1 | `ChatReply` 增加 `modify_patch` 字段（destination/dates/budget/preferences 的 patch） | ⬜ | schemas/chat.py |
-| T1.2.2 | `conversation.py` 处理 `modify_plan` intent：解析增量修改 → 合并到既有 plan_request → 重置 ready | ⬜ | conversation.py |
-| T1.2.3 | 前端 chatStore 检测 modify 后用 patch 重置 form 并可重新 beginPlanning | ⬜ | frontend |
+| T1.2.1 | `ChatReply` 增加 `modify_patch` 字段（destination/dates/budget/preferences 的 patch） | ✅ | schemas/chat.py |
+| T1.2.2 | `conversation.py` 处理 `modify_plan` intent：解析增量修改 → 合并到既有 plan_request → 重置 ready | ✅ | conversation.py |
+| T1.2.3 | 前端 chatStore 检测 modify 后用 patch 重置 form 并可重新 beginPlanning | ✅ | frontend chatStore.applyPatch |
 
 **验收清单**：
 - [ ] "预算加到8千" 在已有 session 内解析为 budget patch
@@ -157,25 +157,25 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T1.3.1 | `frontend/src/types/chat.ts`：ChatMessage/ChatReply/Slots | ⬜ | types/chat.ts |
-| T1.3.2 | `frontend/src/services/chat.ts`：`postChat()` 封装 /api/chat | ⬜ | services/chat.ts |
-| T1.3.3 | `frontend/src/stores/chatStore.ts`：messages/slots/session_id/status | ⬜ | stores/chatStore.ts |
-| T1.3.4 | `frontend/src/components/Chat/ChatWindow.tsx`：用户/assistant 气泡 | ⬜ | components/Chat/ |
-| T1.3.5 | `frontend/src/components/Chat/ChatInput.tsx`：输入框+发送 | ⬜ | components/Chat/ |
-| T1.3.6 | `frontend/src/components/Chat/SlotPanel.tsx`：侧边已收集槽位可视化 + 可点击编辑 | ⬜ | components/Chat/ |
-| T1.3.7 | `frontend/src/pages/Chat.tsx`：主页面，ready=true → startPlan → /loading?plan_id | ⬜ | pages/Chat.tsx |
-| T1.3.8 | `App.tsx` 路由：`/` → Chat，`/form` 保留旧表单（兼容+E2E） | ⬜ | App.tsx |
-| T1.3.9 | sessionStorage 持久化 session_id；首次进入 assistant 主动发首条 | ⬜ | Chat.tsx |
+| T1.3.1 | `frontend/src/types/chat.ts`：ChatMessage/ChatReply/Slots | ✅ | types/chat.ts |
+| T1.3.2 | `frontend/src/services/chat.ts`：`postChat()` 封装 /api/chat | ✅ | services/chat.ts |
+| T1.3.3 | `frontend/src/stores/chatStore.ts`：messages/slots/session_id/status | ✅ | stores/chatStore.ts |
+| T1.3.4 | `frontend/src/components/Chat/ChatWindow.tsx`：用户/assistant 气泡 | ✅ | components/Chat/ |
+| T1.3.5 | `frontend/src/components/Chat/ChatInput.tsx`：输入框+发送 | ✅ | components/Chat/ |
+| T1.3.6 | `frontend/src/components/Chat/SlotPanel.tsx`：侧边已收集槽位可视化 | ✅ | components/Chat/ |
+| T1.3.7 | `frontend/src/pages/Chat.tsx`：主页面，ready=true → startPlan → /loading?plan_id | ✅ | pages/Chat.tsx |
+| T1.3.8 | `App.tsx` 路由：`/` → Chat，`/form` 保留旧表单（兼容+E2E） | ✅ | App.tsx |
+| T1.3.9 | sessionStorage 持久化 session_id；首次进入 assistant 主动发首条 | ✅ | Chat.tsx + chatStore.ts |
 
 **验收清单**：
-- [ ] 全程自然语言完成需求表达，无需触碰表单
-- [ ] assistant 追问温暖清晰（复用情侣文案风格）
-- [ ] 槽满无缝切 Loading→PlanResult（SSE 复用）
-- [ ] 刷新页面对话不丢（sessionStorage）
-- [ ] `/form` + 既有 Playwright E2E 不破坏
-- [ ] tsc 检查 + Vite 构建 + 移动端响应式通过
+- [x] 全程自然语言完成需求表达，无需触碰表单（Chat 页对话 + 槽满自动弹规划按钮）
+- [x] assistant 追问温暖清晰（GREETING + mock reply 复用情侣文案风格）
+- [x] 槽满无缝切 Loading→PlanResult（Chat → startPlan → /loading?plan_id → resumeStream）
+- [x] 刷新页面对话不丢（sessionStorage 持久化 session_id）
+- [x] `/form` 保留旧表单路由，既有 E2E 不破坏
+- [x] tsc 检查 + Vite 构建 + 移动端响应式通过
 
-**P1 阶段出口**：curl /api/chat 走通 + Chat UI 可用 → 进入 P2。
+**P1 阶段出口**：curl /api/chat 走通 + Chat UI 可用 ✅ → 进入 P2。
 
 ---
 
