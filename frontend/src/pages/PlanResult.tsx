@@ -118,7 +118,7 @@ export function PlanResult() {
         </motion.section>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Timeline days={plan.days} weatherSwaps={plan.weather_swaps} />
+          <Timeline days={plan.days} weatherSwaps={plan.weather_swaps} planId={plan.plan_id} />
 
           <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
             <BudgetAlerts budgetBreakdown={plan.budget_breakdown} />

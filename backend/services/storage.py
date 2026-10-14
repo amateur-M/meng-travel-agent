@@ -18,7 +18,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 import psycopg
 from psycopg_pool import ConnectionPool
@@ -80,6 +80,24 @@ def _init_ddl(conn) -> None:
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_plans_created_at
             ON plans (created_at DESC)
+        """)
+        # P2.3: feedback table for user thumbs up/down on activities
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS plan_feedback (
+                id           SERIAL PRIMARY KEY,
+                plan_id      TEXT NOT NULL,
+                activity_name TEXT NOT NULL,
+                thumbs       TEXT NOT NULL CHECK (thumbs IN ('up', 'down')),
+                created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_feedback_plan_id
+            ON plan_feedback (plan_id)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_feedback_activity
+            ON plan_feedback (activity_name)
         """)
     conn.commit()
 
@@ -219,6 +237,63 @@ class PlanStore:
         except Exception as exc:
             logger.warning("PlanStore.delete failed: %s", exc)
             return False
+
+    # ── P2.3: Feedback ────────────────────────────────────────────
+
+    def save_feedback(self, plan_id: str, activity_name: str, thumbs: str) -> bool:
+        """Record a thumbs up/down for a specific activity in a plan."""
+        pool = _get_pool()
+        if pool is None:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("""
+                        INSERT INTO plan_feedback (plan_id, activity_name, thumbs)
+                        VALUES (%s, %s, %s)
+                    """, (plan_id, activity_name, thumbs))
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.warning("PlanStore.save_feedback failed: %s", exc)
+            return False
+
+    def list_feedback(self, activity_name: Optional[str] = None) -> List[dict]:
+        """Return aggregated feedback counts, optionally filtered by activity name.
+
+        Returns a list of {activity_name, up, down} dicts.
+        """
+        pool = _get_pool()
+        if pool is None:
+            return []
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    if activity_name:
+                        cur.execute("""
+                            SELECT activity_name,
+                                   COUNT(*) FILTER (WHERE thumbs = 'up') AS up,
+                                   COUNT(*) FILTER (WHERE thumbs = 'down') AS down
+                            FROM plan_feedback
+                            WHERE activity_name = %s
+                            GROUP BY activity_name
+                        """, (activity_name,))
+                    else:
+                        cur.execute("""
+                            SELECT activity_name,
+                                   COUNT(*) FILTER (WHERE thumbs = 'up') AS up,
+                                   COUNT(*) FILTER (WHERE thumbs = 'down') AS down
+                            FROM plan_feedback
+                            GROUP BY activity_name
+                        """)
+                    rows = cur.fetchall()
+            return [
+                {"activity_name": row[0], "up": int(row[1]), "down": int(row[2])}
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.warning("PlanStore.list_feedback failed: %s", exc)
+            return []
 
 
 # ── Module-level singleton ────────────────────────────────────────────

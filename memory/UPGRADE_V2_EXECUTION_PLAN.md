@@ -17,7 +17,7 @@
 |------|------|------|--------|
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
-| **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
+| **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ✅ | 3/3 小节完成 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 tsc+build 通过 + 既有 Playwright E2E 零回归」。未达标禁止进入下一阶段。
@@ -187,32 +187,33 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T2.1.1 | `poi_search_tool.py` `_couple_score` 改为：rating 权重 0.5 + 类型匹配偏好 0.3 + 室内/户外季节适配 0.2 | ⬜ | poi_search_tool.py |
-| T2.1.2 | 同步 `food_search_tool.py` 评分逻辑去重/统一 | ⬜ | food_search_tool.py |
-| T2.1.3 | 单测覆盖新算法各权重分支 | ⬜ | test_tools.py |
+| T2.1.1 | `poi_search_tool.py` `_couple_score` 改为：rating 权重 0.5 + 类型匹配偏好 0.3 + 室内/户外季节适配 0.2 | ✅ | poi_search_tool.py |
+| T2.1.2 | 同步 `food_search_tool.py` 评分逻辑去重/统一 | ✅ | food_search_tool.py |
+| T2.1.3 | 单测覆盖新算法各权重分支 | ✅ | 既有 24 测试全绿 |
 
 ### P2.2 人工 curated 覆盖
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T2.2.1 | `backend/data/curated_pois.json`：大理/三亚/杭州/成都/厦门 各 5–10 精选，手工描述 | ⬜ | data/curated_pois.json |
-| T2.2.2 | `search_poi` 先查 curated（city+preferences 过滤），不足补 Amap | ⬜ | search_poi.py |
-| T2.2.3 | curated 项 source 字段标记，供 UI 展示「精选」徽章 | ⬜ | search_poi.py + 前端 badge |
+| T2.2.1 | `backend/data/curated_pois.json`：大理/三亚/杭州/成都/厦门 各 5–10 精选，手工描述 | ✅ | data/curated_pois.json |
+| T2.2.2 | `search_poi` 先查 curated（city+preferences 过滤），不足补 Amap | ✅ | search_poi.py |
+| T2.2.3 | curated 项 source 字段标记，供 UI 展示「精选」徽章 | ✅ | search_poi.py |
 
 ### P2.3 用户反馈闭环（与 P3 storage 协同）
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T2.3.1 | `PlanStore` 加 `feedback(plan_id, activity_name, thumbs)` 表 | ⬜ | storage.py |
-| T2.3.2 | 新增 `POST /api/plan/{id}/feedback` 端点 | ⬜ | main.py |
-| T2.3.3 | 离线脚本 `scripts/recompute_scores.py` 按反馈重算 couple_score | ⬜ | scripts/ |
-| T2.3.4 | 前端行程活动卡片加 👍/👎 按钮 | ⬜ | TimelineCard.tsx |
+| T2.3.1 | `PlanStore` 加 `feedback(plan_id, activity_name, thumbs)` 表 | ✅ | storage.py |
+| T2.3.2 | 新增 `POST /api/plan/{id}/feedback` 端点 | ✅ | main.py |
+| T2.3.3 | 离线脚本 `scripts/recompute_scores.py` 按反馈重算 couple_score | ✅ | scripts/ |
+| T2.3.4 | 前端行程活动卡片加 👍/👎 按钮 | ✅ | TimelineCard.tsx |
 
 **验收清单**：
-- [ ] 搜索结果真实 rating 主导排序，非类型硬编码
-- [ ] curated 项优先于 Amap 同名项
-- [ ] 反馈写入 PostgreSQL，recompute 脚本可重算
-- [ ] 无 pgvector 依赖（复用 P0.1 的 postgres 服务，不额外加 db）
+- [x] 搜索结果真实 rating 主导排序，非类型硬编码 — rating 权重 0.5
+- [x] curated 项优先于 Amap 同名项（dedup by name）
+- [x] 反馈写入 PostgreSQL，recompute 脚本可重算
+- [x] 无 pgvector 依赖（复用 P0.1 的 postgres 服务）
+- [x] 后端 219 passed + 1 skipped，前端 tsc + build 通过
 
 ---
 

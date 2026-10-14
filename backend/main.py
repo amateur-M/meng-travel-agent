@@ -388,6 +388,25 @@ async def delete_plan(plan_id: str):
     return {"deleted": True, "plan_id": plan_id}
 
 
+# ── Feedback endpoint (P2.3) ────────────────────────────────────
+
+@app.post("/api/plan/{plan_id}/feedback")
+async def plan_feedback(plan_id: str, activity_name: str, thumbs: str):
+    """Record user thumbs up/down for an activity in a completed plan.
+
+    Query params:
+        activity_name: name of the activity being rated
+        thumbs: 'up' or 'down'
+    """
+    if thumbs not in ("up", "down"):
+        return JSONResponse(status_code=400, content={"detail": "thumbs must be 'up' or 'down'"})
+    if not activity_name:
+        return JSONResponse(status_code=400, content={"detail": "activity_name required"})
+
+    success = plan_store.save_feedback(plan_id, activity_name, thumbs)
+    return {"recorded": success, "plan_id": plan_id, "activity_name": activity_name, "thumbs": thumbs}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

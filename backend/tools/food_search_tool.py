@@ -52,12 +52,24 @@ def _cuisine(typecode: str, type_text: str, tag: str) -> str:
 
 
 def _couple_score(cuisine: str, rating: float) -> float:
-    base = 7.0
-    if cuisine in ("火锅", "本地菜", "西餐"):
-        base += 0.5
-    if rating:
-        base += max(-1.0, min(1.0, (rating - 4.0) * 0.5))
-    return round(max(0.0, min(10.0, base)), 1)
+    """P2.1: rating-led scoring, unified with poi_search_tool pattern.
+
+    Weight breakdown:
+      - rating:    0.6  (normalised 0–10 from 0–5 scale)
+      - cuisine:   0.4  (romantic cuisine types get a small boost)
+    """
+    rating_norm = (rating / 5.0) if rating > 0 else 0.5
+    rating_score = rating_norm * 10
+
+    if cuisine in ("火锅", "本地菜", "西餐", "中餐"):
+        type_score = 7.5
+    elif cuisine in ("咖啡", "甜品"):
+        type_score = 7.0
+    else:
+        type_score = 5.0
+
+    final = rating_score * 0.6 + type_score * 0.4
+    return round(max(0.0, min(10.0, final)), 1)
 
 
 def _normalise_restaurant(item: dict) -> dict:

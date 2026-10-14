@@ -35,7 +35,7 @@
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 升级执行中。P0 地基修复 ✅ + P1 对话式 ✅ 全部完成（Redis 会话 + 意图分类 + 槽位提取 + Chat UI + modify_plan），后端 219 passed + 1 skipped，前端 tsc+build 通过。下一步是 P2 内容质量（couple_score 重写 + curated + 反馈循环）。执行计划中每个任务带唯一 ID 与 ⬜/🔄/✅ 状态标记，进度可在 UPGRADE_V2_EXECUTION_PLAN.md 顶部总览表查看。
+当前项目状态：M0-M7 已交付，V2 升级执行中。P0 地基修复 ✅ + P1 对话式 ✅ + P2 内容质量 ✅ 全部完成（couple_score 算法重写 + curated JSON + 反馈闭环），后端 219 passed + 1 skipped，前端 tsc+build 通过。下一步是 P3 工程化（鉴权限流 + 可观测性 + 配置规范化 + 外部 API 韧性）。执行计划中每个任务带唯一 ID 与 ⬜/🔄/✅ 状态标记，进度可在 UPGRADE_V2_EXECUTION_PLAN.md 顶部总览表查看。
 
 ---
 

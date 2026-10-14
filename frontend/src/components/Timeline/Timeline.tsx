@@ -12,6 +12,7 @@ import { WeatherBadge } from "../WeatherBadge/WeatherBadge";
 interface TimelineProps {
   days: DayPlan[];
   weatherSwaps?: WeatherSwap[];
+  planId?: string;
 }
 
 const PERIODS: Period[] = ["上午", "下午", "晚间"];
@@ -43,6 +44,7 @@ interface TimelineDayProps {
   weatherSwaps: WeatherSwap[];
   expanded: boolean;
   onToggle: () => void;
+  planId?: string;
 }
 
 function TimelineDay({
@@ -50,6 +52,7 @@ function TimelineDay({
   weatherSwaps,
   expanded,
   onToggle,
+  planId,
 }: TimelineDayProps) {
   const dateLabel = new Intl.DateTimeFormat("zh-CN", {
     month: "long",
@@ -134,9 +137,10 @@ function TimelineDay({
                     <div className="grid gap-3">
                       {group.activities.map((activity, index) => (
                         <TimelineCard
-                          key={`${activity.name}-${index}`}
-                          activity={activity}
-                        />
+                           key={`${activity.name}-${index}`}
+                           activity={activity}
+                           planId={planId}
+                         />
                       ))}
                     </div>
                   </div>
@@ -153,7 +157,7 @@ function TimelineDay({
 /**
  * 行程时间轴，按 Day 1 到 Day N 展开，每天再分为上午、下午和晚间。
  */
-export function Timeline({ days, weatherSwaps = [] }: TimelineProps) {
+export function Timeline({ days, weatherSwaps = [], planId }: TimelineProps) {
   const [expandedDays, setExpandedDays] = useState<Set<number>>(
     () => new Set(days.map((day) => day.day_index)),
   );
@@ -186,6 +190,7 @@ export function Timeline({ days, weatherSwaps = [] }: TimelineProps) {
           weatherSwaps={weatherSwaps}
           expanded={expandedDays.has(day.day_index)}
           onToggle={() => toggleDay(day.day_index)}
+          planId={planId}
         />
       ))}
     </motion.div>

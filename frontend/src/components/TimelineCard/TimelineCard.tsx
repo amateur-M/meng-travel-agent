@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion, type Variants } from "framer-motion";
 import {
   Clock3,
@@ -7,15 +8,19 @@ import {
   MapPin,
   Mountain,
   Palette,
+  ThumbsDown,
+  ThumbsUp,
   TreePine,
   Utensils,
   WalletCards,
 } from "lucide-react";
 import type { Activity, ActivityType } from "../../types/trip";
 import { CoupleMessage } from "../CoupleMessage/CoupleMessage";
+import { api } from "../../services/api";
 
 interface TimelineCardProps {
   activity: Activity;
+  planId?: string;
 }
 
 const TYPE_META: Record<
@@ -44,10 +49,25 @@ export const timelineCardMotion: Variants = {
  * 单个活动卡片，展示类型图标、时间、地点、花费与情侣寄语。
  * M5: 留白活动用虚线边框区分；寄语用 CoupleMessage 按时段差异化展示。
  */
-export function TimelineCard({ activity }: TimelineCardProps) {
+export function TimelineCard({ activity, planId }: TimelineCardProps) {
   const meta = TYPE_META[activity.activity_type] ?? TYPE_META.留白;
   const Icon = meta.Icon;
   const isRest = activity.activity_type === "留白";
+  const [feedbackState, setFeedbackState] = useState<"none" | "up" | "down">("none");
+
+  const handleFeedback = async (thumbs: "up" | "down") => {
+    if (!planId || feedbackState !== "none") {
+      return;
+    }
+    setFeedbackState(thumbs);
+    try {
+      await api.post(
+        `/api/plan/${planId}/feedback?activity_name=${encodeURIComponent(activity.name)}&thumbs=${thumbs}`,
+      );
+    } catch {
+      // silently fail — feedback is best-effort
+    }
+  };
 
   return (
     <motion.article
@@ -116,6 +136,35 @@ export function TimelineCard({ activity }: TimelineCardProps) {
               activityType={activity.activity_type}
               period={activity.period}
             />
+          )}
+
+          {!isRest && planId && (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleFeedback("up")}
+                disabled={feedbackState !== "none"}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition ${
+                  feedbackState === "up"
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "text-ink-300 hover:bg-cream-50 hover:text-ink-500"
+                } disabled:cursor-default`}
+              >
+                <ThumbsUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => handleFeedback("down")}
+                disabled={feedbackState !== "none"}
+                className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs transition ${
+                  feedbackState === "down"
+                    ? "bg-rose-50 text-rose-600"
+                    : "text-ink-300 hover:bg-cream-50 hover:text-ink-500"
+                } disabled:cursor-default`}
+              >
+                <ThumbsDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
           )}
         </div>
       </div>

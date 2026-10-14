@@ -11,15 +11,6 @@ from services import amap
 # alternatives, which the weather-adaptation node needs for rainy days.
 _ATTRACTION_TYPES = "110000|140100"
 
-_CATEGORY_BASE_SCORE = {
-    "自然": 8.5,
-    "文化": 6.8,
-    "网红": 6.2,
-    "户外": 7.5,
-    "人文": 8.0,
-    "景点": 7.6,
-}
-
 _PREFERENCE_CATEGORIES: dict[str, set[str]] = {
     "浪漫": {"自然", "人文", "网红"},
     "自然": {"自然"},
@@ -74,11 +65,55 @@ def _rating(item: dict) -> float:
         return 0.0
 
 
-def _couple_score(category: str, rating: float) -> float:
-    base = _CATEGORY_BASE_SCORE.get(category, 7.0)
-    if rating:
-        base += max(-1.0, min(1.0, (rating - 4.0) * 0.5))
-    return round(max(0.0, min(10.0, base)), 1)
+def _couple_score(category: str, rating: float, indoor: bool = False,
+                  preferences: str = "") -> float:
+    """P2.1: rating-led scoring algorithm.
+
+    Weight breakdown:
+      - rating:         0.5  (normalised 0–10 from 0–5 scale)
+      - type match:     0.3  (how well category matches user preferences)
+      - indoor/season:  0.2  (indoor bonus in cold seasons, outdoor bonus in warm)
+
+    Returns a float in [0, 10].
+    """
+    # ── rating component (0.5 weight) ───────────────────────────
+    # Map 0–5 rating to 0–10, defaulting to 5.0 (→ score 5) when no rating
+    rating_norm = (rating / 5.0) if rating > 0 else 0.5
+    rating_score = rating_norm * 10  # 0–10
+
+    # ── type-match component (0.3 weight) ───────────────────────
+    type_score = 5.0  # neutral baseline
+    if preferences:
+        pref_tags = {
+            tag.strip()
+            for tag in preferences.replace("，", ",").split(",")
+            if tag.strip()
+        }
+        matched = any(
+            category in _PREFERENCE_CATEGORIES.get(tag, set())
+            for tag in pref_tags
+        )
+        if matched:
+            type_score = 8.0
+        else:
+            type_score = 4.0
+    else:
+        # No preferences specified — slight boost for naturally romantic types
+        type_score = 7.0 if category in ("自然", "人文") else 5.0
+
+    # ── indoor/season component (0.2 weight) ────────────────────
+    # Indoor POIs get a small bonus for weather resilience;
+    # Outdoor POIs get a small bonus for scenic variety.
+    # This is a static heuristic (no real-time weather context here).
+    season_score = 7.0 if indoor else 6.5  # indoor slightly more versatile
+
+    # ── weighted blend ──────────────────────────────────────────
+    final = (
+        rating_score * 0.5
+        + type_score * 0.3
+        + season_score * 0.2
+    )
+    return round(max(0.0, min(10.0, final)), 1)
 
 
 def _duration(category: str) -> int:
@@ -93,11 +128,12 @@ def _description(item: dict, category: str) -> str:
     return f"{lead}，位于{address}" if address else lead
 
 
-def _normalise_poi(item: dict) -> dict:
+def _normalise_poi(item: dict, preferences: str = "") -> dict:
     typecode = item.get("typecode", "")
     type_text = item.get("type", "")
     category = _simplify_type(typecode, type_text)
     rating = _rating(item)
+    indoor = _is_indoor(typecode, type_text)
 
     location = item.get("location", "")
     lat = lng = None
@@ -114,8 +150,8 @@ def _normalise_poi(item: dict) -> dict:
         "rating": rating,
         "cost": 0.0,
         "location": item.get("address") or item.get("business_area") or "",
-        "indoor": _is_indoor(typecode, type_text),
-        "couple_score": _couple_score(category, rating),
+        "indoor": indoor,
+        "couple_score": _couple_score(category, rating, indoor, preferences),
         "duration_min": _duration(category),
         "description": _description(item, category),
         "lat": lat,
@@ -126,22 +162,6 @@ def _normalise_poi(item: dict) -> dict:
             if photo.get("url")
         ],
     }
-
-
-def _preference_score(poi: dict, preferences: str) -> int:
-    if not preferences:
-        return 0
-
-    tags = {
-        tag.strip()
-        for tag in preferences.replace("，", ",").split(",")
-        if tag.strip()
-    }
-    score = 0
-    for tag in tags:
-        if poi["type"] in _PREFERENCE_CATEGORIES.get(tag, set()):
-            score += 2
-    return score
 
 
 @tool
@@ -157,18 +177,12 @@ def poi_search_tool(city: str, preferences: str = "") -> str:
         情侣推荐指数和描述。数据来自高德地图实时接口。
     """
     pois = [
-        _normalise_poi(item)
+        _normalise_poi(item, preferences)
         for item in amap.search_pois(city, _ATTRACTION_TYPES, 20)
     ]
 
-    if preferences:
-        pois.sort(
-            key=lambda poi: (
-                -_preference_score(poi, preferences),
-                -poi["couple_score"],
-            )
-        )
-    else:
-        pois.sort(key=lambda poi: -poi["couple_score"])
+    # P2.1: couple_score now incorporates preference matching,
+    # so a single sort by couple_score suffices.
+    pois.sort(key=lambda poi: -poi["couple_score"])
 
     return json.dumps(pois[:12], ensure_ascii=False)
