@@ -27,10 +27,15 @@
 
 新会话开始时，按顺序阅读以下文件即可完全恢复项目上下文：
 
-1. 先读本文件（`memory/BOOTSTRAP.md`）—— 了解项目是什么、处于什么阶段
-2. 再读 `memory/ROADMAP.md` —— 了解当前里程碑、已完成工作、下一步任务
-3. 最后读 `memory/ARCHITECTURE.md` —— 了解技术决策、Agent 设计、API 协议
-4. 如有需要，检查 `frontend/` 和 `backend/` 的实际代码确认当前进度
+1. 先读本文件（memory/BOOTSTRAP.md）—— 了解项目是什么、处于什么阶段
+2. 再读 memory/ROADMAP.md —— 了解当前里程碑、已完成工作、下一步任务
+3. 再读 memory/UPGRADE_V2_AUDIT.md —— 了解 V2 升级的 6 项技术债诊断与 P0-P3 优先级重排理由
+4. 再读 memory/UPGRADE_V2_EXECUTION_PLAN.md —— 了解可跟踪执行计划（41 个任务带 ID+状态，持久化用 PostgreSQL）
+5. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、API 协议
+
+如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
+
+当前项目状态：M0-M7 已交付，V2 升级方案已规划完毕（P0 地基修复 → P1 对话式 → P2 内容质量 → P3 工程化），尚未开始执行。下一步是 P0.1 行程持久化（PostgreSQL + REST 端点补齐）。执行计划中每个任务带唯一 ID 与 ⬜/🔄/✅ 状态标记，进度可在 UPGRADE_V2_EXECUTION_PLAN.md 顶部总览表查看。
 
 ---
 
