@@ -62,5 +62,8 @@ class Settings:
         "postgresql://coupletrip:coupletrip_dev@localhost:5432/coupletrip",
     )
 
+    # Redis (P1.1 对话会话存储)
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
 
 settings = Settings()

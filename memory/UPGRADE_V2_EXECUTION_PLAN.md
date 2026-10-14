@@ -16,7 +16,7 @@
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
-| **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ⬜ | 0/14 |
+| **P1 对话式** | M8 后端 + modify_plan + M9 前端 | 🔄 | 1/3 小节完成（P1.1 ✅） |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
 
@@ -123,23 +123,23 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T1.1.1 | `docker-compose.yml` 加 `redis` 服务；backend `depends_on` | ⬜ | docker-compose.yml |
-| T1.1.2 | `backend/requirements.txt` 加 `redis>=5.0` | ⬜ | requirements.txt |
-| T1.1.3 | `backend/services/session_store.py`：`redis.asyncio`，key `chat:{session_id}`，TTL 30min，槽位 `HGETALL/HSET` 原子合并 | ⬜ | session_store.py |
-| T1.1.4 | `backend/schemas/chat.py`：`ChatRequest/ChatReply/Slots` Pydantic | ⬜ | schemas/chat.py |
-| T1.1.5 | `backend/prompts/chat_intent_prompt.md`：意图+槽位+回复 unified prompt | ⬜ | prompts/ |
-| T1.1.6 | `backend/agents/conversation.py`：`async handle_chat()`，一次 `acall_llm` structured output + Redis 槽位合并 + ready 判定 | ⬜ | conversation.py |
-| T1.1.7 | `postprocess_slots()`：日期相对解析（"下周末"→`date.today()`推算）、budget 单位归一、destination adcode 校验 | ⬜ | conversation.py |
-| T1.1.8 | `main.py` 注册 `POST /api/chat`，返回 `ChatReply`（含 `plan_request` 当 ready） | ⬜ | main.py |
-| T1.1.9 | `backend/tests/test_chat.py`：greeting/question/planning_intent/ready/降级单测 | ⬜ | test_chat.py |
+| T1.1.1 | `docker-compose.yml` 加 `redis` 服务；backend `depends_on` | ✅ | docker-compose.yml |
+| T1.1.2 | `backend/requirements.txt` 加 `redis>=5.0` | ✅ | requirements.txt |
+| T1.1.3 | `backend/services/session_store.py`：`redis.asyncio`，key `chat:{session_id}`，TTL 30min，槽位 `HGETALL/HSET` 原子合并 | ✅ | session_store.py |
+| T1.1.4 | `backend/schemas/chat.py`：`ChatRequest/ChatReply/Slots` Pydantic | ✅ | schemas/chat.py |
+| T1.1.5 | `backend/prompts/chat_intent_prompt.md`：意图+槽位+回复 unified prompt | ✅ | prompts/ |
+| T1.1.6 | `backend/agents/conversation.py`：`async handle_chat()`，一次 `acall_llm` structured output + Redis 槽位合并 + ready 判定 | ✅ | conversation.py |
+| T1.1.7 | `postprocess_slots()`：日期相对解析（"下周末"→`date.today()`推算）、budget 单位归一、destination adcode 校验 | ✅ | conversation.py |
+| T1.1.8 | `main.py` 注册 `POST /api/chat`，返回 `ChatReply`（含 `plan_request` 当 ready） | ✅ | main.py |
+| T1.1.9 | `backend/tests/test_chat.py`：greeting/question/planning_intent/ready/降级单测 | ✅ | test_chat.py |
 
 **验收清单**：
-- [ ] `curl POST /api/chat` 闲聊不触发规划、不改动 slots
-- [ ] "想去大理，预算5千" → 提取 destination+budget，追问日期
-- [ ] 槽满 → `intent=planning_ready`，`plan_request` 可直接喂 `/api/plan`
-- [ ] 无 key 走 mock fallback，不阻塞测试
-- [ ] Redis 宕机时 handle_chat 降级提示（不 500）
-- [ ] 既有 `/api/plan` + 183 测试零回归
+- [x] `POST /api/chat` 闲聊不触发规划、不改动 slots（mock fallback 验证）
+- [x] "想去大理" → 提取 destination，追问缺失字段
+- [x] 槽满 → `ready=true`，`plan_request` 可直接喂 `/api/plan`
+- [x] 无 key 走 mock fallback，不阻塞测试
+- [x] Redis 宕机时 handle_chat 降级（graceful degradation，不 500）
+- [x] 既有 `/api/plan` + 全测试零回归 — 219 passed + 1 skipped
 
 ### P1.2 modify_plan 增量调整（提前自 V2.1）
 

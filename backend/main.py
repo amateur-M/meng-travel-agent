@@ -10,8 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 
 from schemas import TripPlanRequest, TripPlanResponse
+from schemas.chat import ChatRequest, ChatReply
 from agents.state import AgentState
 from agents.graph import graph
+from agents.conversation import handle_chat
 from services.storage import plan_store, generate_plan_id
 
 logger = logging.getLogger("coupletrip")
@@ -36,6 +38,20 @@ app.add_middleware(
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "coupletrip"}
+
+
+# ── Chat endpoint (P1.1) ─────────────────────────────────────────
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    """Conversational endpoint: intent classification + slot extraction.
+
+    Returns a ChatReply with the assistant's text, identified intent,
+    merged slots, and — when slots are complete — a plan_request that
+    can be fed directly to POST /api/plan.
+    """
+    reply = await handle_chat(request.message, request.session_id)
+    return reply
 
 
 # ── SSE event helpers ───────────────────────────────────────────
