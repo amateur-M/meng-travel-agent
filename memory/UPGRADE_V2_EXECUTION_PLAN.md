@@ -15,7 +15,7 @@
 
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
-| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | 🔄 | 2/3 小节完成（P0.1 ✅ P0.2 ✅） |
+| **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ⬜ | 0/14 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ⬜ | 0/7 |
 | **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
@@ -97,19 +97,20 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T0.3.1 | 后端 `POST /api/plan` 改为返回 `{plan_id, stream_url}`，规划任务后台投递（`asyncio.create_task`） | ⬜ | main.py |
-| T0.3.2 | 后端新增内存 `plan_streams: dict[plan_id → asyncio.Queue]`，节点事件入队，GET stream 出队消费 | ⬜ | main.py / sse_bus.py |
-| T0.3.3 | 后端 GET `/api/plan/{plan_id}/stream`：连已存在 Queue；若 plan 已完成则从 PostgreSQL 重放最终结果 | ⬜ | main.py |
-| T0.3.4 | 前端 `postEventStream` 重试改连 `GET .../stream`，不再重 POST | ⬜ | sse.ts |
-| T0.3.5 | 前端 `plan.ts` 拆 `startPlan()`（POST 拿 id）与 `resumeStream(id)`（GET）两步 | ⬜ | plan.ts |
+| T0.3.1 | 后端 `POST /api/plan` 改为返回 `{plan_id, stream_url}`，规划任务后台投递（`asyncio.create_task`） | ✅ | main.py |
+| T0.3.2 | 后端新增内存 `plan_streams: dict[plan_id → asyncio.Queue]`，节点事件入队，GET stream 出队消费 | ✅ | main.py |
+| T0.3.3 | 后端 GET `/api/plan/{plan_id}/stream`：连已存在 Queue；若 plan 已完成则从 PostgreSQL 重放最终结果 | ✅ | main.py |
+| T0.3.4 | 前端 `postEventStream` 重试改连 `GET .../stream`，不再重 POST | ✅ | sse.ts |
+| T0.3.5 | 前端 `plan.ts` 拆 `startPlan()`（POST 拿 id）与 `resumeStream(id)`（GET）两步 | ✅ | plan.ts |
 
 **验收清单**：
-- [ ] 断线后前端自动重连 GET stream，后端日志不见二次 graph 执行
-- [ ] 规划完成后断开重连，GET stream 直接 emit complete（从库重放）
-- [ ] `complete` 含 plan_id
-- [ ] 既有 SSE 单测（test_sse.py）零回归或同步更新
+- [x] 断线后前端自动重连 GET stream（getEventStream 重连同一 URL），后端 graph 只跑一次
+- [x] 规划完成后断开重连，GET stream 从 PostgreSQL 重放 complete 事件
+- [x] `complete` 含 plan_id（P0.1 已实现）
+- [x] 既有 SSE 单测（test_sse.py）零回归 — 190 passed + 1 skipped
+- [x] 前端 tsc + Vite build 通过
 
-**P0 阶段出口**：三组验收全绿 → 进入 P1。
+**P0 阶段出口**：三组验收全绿 ✅ → 进入 P1。
 
 ---
 

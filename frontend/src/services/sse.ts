@@ -73,6 +73,9 @@ const MAX_RETRIES = 2;
  *
  * M6: 支持全部事件类型（step/partial/budget_alert/weather_swap/message/
  * complete/error），并在连接中断时自动重试（最多 maxRetries 次）。
+ *
+ * P0.3: 仍保留用于 POST /api/plan 直接流式（旧路径兼容），但新代码
+ * 优先使用 startPlan + resumeStream 两段式。
  */
 export async function postEventStream(
   url: string,
@@ -107,6 +110,123 @@ export async function postEventStream(
       }
       attempt += 1;
       await delay(800 * attempt);
+    }
+  }
+}
+
+/**
+ * P0.3: 通过 GET + ReadableStream 消费 SSE 流。
+ *
+ * 用于消费 GET /api/plan/{plan_id}/stream 端点。断线重连时自动
+ * 重连同一个 GET URL，不会重新发起 POST 创建新 plan。
+ */
+export async function getEventStream(
+  url: string,
+  handlers: SSEHandlers,
+  maxRetries: number = MAX_RETRIES,
+) {
+  let attempt = 0;
+  let receivedComplete = false;
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    let streamEnded = false;
+
+    try {
+      await consumeGetOnce(url, handlers, () => {
+        receivedComplete = true;
+        streamEnded = true;
+      }, () => {
+        streamEnded = true;
+      });
+
+      if (receivedComplete) {
+        return;
+      }
+
+      // 流结束但未收到 complete —— 可能中断，重连同一 URL
+      if (!streamEnded || attempt >= maxRetries) {
+        throw new Error("流式响应中断，已达最大重试次数");
+      }
+      attempt += 1;
+      await delay(800 * attempt);
+    } catch (error) {
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      attempt += 1;
+      await delay(800 * attempt);
+    }
+  }
+}
+
+async function consumeGetOnce(
+  url: string,
+  handlers: SSEHandlers,
+  markComplete: () => void,
+  markEnded: () => void,
+) {
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Accept: "text/event-stream",
+    },
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `请求失败（${response.status}）`);
+  }
+
+  if (!response.body) {
+    throw new Error("当前浏览器不支持流式响应");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
+  let buffer = "";
+
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { value, done } = await reader.read();
+
+    if (done) {
+      markEnded();
+      return;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+
+    for (const rawEvent of events) {
+      const event = parseSseEvent(rawEvent);
+
+      if (!event) {
+        continue;
+      }
+
+      if (event.name === "step") {
+        handlers.onStep?.(event.data as PlanStepEvent);
+      } else if (event.name === "partial") {
+        handlers.onPartial?.(event.data as PartialEvent);
+      } else if (event.name === "budget_alert") {
+        handlers.onBudgetAlert?.(event.data as BudgetAlertEvent);
+      } else if (event.name === "weather_swap") {
+        handlers.onWeatherSwap?.(event.data as WeatherSwapEvent);
+      } else if (event.name === "message") {
+        handlers.onMessage?.(event.data as CoupleMessageEvent);
+      } else if (event.name === "complete") {
+        markComplete();
+        handlers.onComplete?.(event.data);
+      } else if (event.name === "error") {
+        throw new Error(
+          typeof event.data === "object" && event.data !== null
+            ? ((event.data as { message?: string }).message ??
+              "行程生成失败")
+            : String(event.data),
+        );
+      }
     }
   }
 }

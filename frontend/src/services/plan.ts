@@ -15,8 +15,16 @@ import type {
   WeatherSwap,
   WeatherSwapEvent,
 } from "../types/trip";
-import { postEventStream } from "./sse";
+import { postEventStream, getEventStream } from "./sse";
 import { api, ApiError } from "./api";
+
+export interface PlanStreamOptions {
+  onStep?: (event: PlanStepEvent) => void;
+  onPartial?: (payload: PartialEvent) => void;
+  onBudgetAlert?: (payload: BudgetAlertEvent) => void;
+  onWeatherSwap?: (payload: WeatherSwapEvent) => void;
+  onMessage?: (payload: MessageEvent) => void;
+}
 
 interface CreatePlanOptions {
   onStep?: (event: PlanStepEvent) => void;
@@ -302,6 +310,49 @@ export async function createPlan(
 
   await postEventStream("/api/plan", {
     body: request,
+    onStep: options.onStep,
+    onPartial: options.onPartial,
+    onBudgetAlert: options.onBudgetAlert,
+    onWeatherSwap: options.onWeatherSwap,
+    onMessage: options.onMessage,
+    onComplete: (payload) => {
+      plan = normalizePlan(payload, request);
+    },
+    onError: (payload) => {
+      throw new Error(readErrorMessage(payload));
+    },
+  });
+
+  if (!plan) {
+    throw new Error("未收到完整行程结果");
+  }
+
+  return plan;
+}
+
+/**
+ * P0.3: 第一步 — POST /api/plan 创建规划，返回 plan_id + stream_url。
+ * 不等待管线完成，立即返回。
+ */
+export async function startPlan(
+  request: TripPlanRequest,
+): Promise<{ plan_id: string; stream_url: string; status: string }> {
+  const response = await api.post("/api/plan", request);
+  return response.data as { plan_id: string; stream_url: string; status: string };
+}
+
+/**
+ * P0.3: 第二步 — GET /api/plan/{plan_id}/stream 消费 SSE 事件流。
+ * 断线重连时自动重连同一个 GET URL，不会重新 POST。
+ */
+export async function resumeStream(
+  planId: string,
+  request: TripPlanRequest,
+  options: PlanStreamOptions = {},
+): Promise<TripPlanResponse> {
+  let plan: TripPlanResponse | null = null;
+
+  await getEventStream(`/api/plan/${planId}/stream`, {
     onStep: options.onStep,
     onPartial: options.onPartial,
     onBudgetAlert: options.onBudgetAlert,

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { createPlan, fetchPlan } from "../services/plan";
+import { fetchPlan, startPlan, resumeStream } from "../services/plan";
 import type {
   Activity,
   BudgetAlertEvent,
@@ -148,7 +148,11 @@ export const useTripStore = create<TripStore>((set, get) => ({
     });
 
     try {
-      const plan = await createPlan(request, {
+      // P0.3: 两段式 — POST 创建 plan，GET stream 消费 SSE
+      const { plan_id } = await startPlan(request);
+      set({ planId: plan_id });
+
+      const plan = await resumeStream(plan_id, request, {
         onStep: (event) => {
           set({
             currentStep: event.message || "正在规划行程",

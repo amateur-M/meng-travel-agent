@@ -19,7 +19,7 @@ logger = logging.getLogger("coupletrip")
 app = FastAPI(
     title="CoupleTrip API",
     description="AI-powered couple travel planning agent",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 app.add_middleware(
@@ -78,12 +78,9 @@ def _emit_node_events(phase: str, update: dict) -> list[str]:
     }))
 
     if phase == "plan_itinerary" or phase == "rhythm_control":
-        # Emit a partial event per day so the frontend can render
-        # timeline cards progressively.
         draft = update.get("draft_itinerary", {})
         for day in draft.get("days", []):
             day_index = day.get("day_index", 0)
-            # Group activities by period for the partial payload
             activities_by_period: dict[str, list] = {}
             for act in day.get("activities", []):
                 period = act.get("period", "上午")
@@ -135,18 +132,72 @@ def _emit_node_events(phase: str, update: dict) -> list[str]:
     return events
 
 
-# ── Plan (SSE streaming) ────────────────────────────────────────
+# ── Plan stream bus (P0.3) ──────────────────────────────────────
+# In-memory event queues keyed by plan_id. The background graph task
+# puts SSE frames into the queue; GET /api/plan/{plan_id}/stream
+# consumes them. When the graph completes, a sentinel None is pushed
+# to signal end-of-stream.
+
+plan_streams: dict[str, asyncio.Queue] = {}
+_STREAM_SENTINEL = None  # pushed to queue when stream is done
+
+
+async def _run_graph_to_queue(initial_state: dict, plan_id: str, queue: asyncio.Queue) -> None:
+    """Background task: run the graph pipeline and push SSE events to *queue*.
+
+    This is the single execution of the graph — regardless of how many
+    times the client connects/reconnects to GET stream, the graph runs
+    exactly once per plan_id.
+    """
+    try:
+        final_state: dict = {}
+        async for chunk in graph.astream(initial_state, stream_mode="updates"):
+            if isinstance(chunk, dict):
+                for node_name, update in chunk.items():
+                    if not isinstance(update, dict):
+                        continue
+                    phase = update.get("current_phase", node_name)
+                    final_state = {**final_state, **update}
+                    error = update.get("error", "")
+                    if error:
+                        await queue.put(_sse("error", {"phase": phase, "message": error}))
+                        plan_store.update(plan_id, {"error": error}, status="error")
+                        await queue.put(_STREAM_SENTINEL)
+                        return
+                    for event in _emit_node_events(phase, update):
+                        await queue.put(event)
+
+        # ── build final result ───────────────────────────────────
+        final = final_state.get("final_itinerary", {})
+        warnings = final_state.get("warnings", [])
+        try:
+            validated = TripPlanResponse.model_validate(final)
+            payload_base = validated.model_dump(mode="json")
+        except Exception as val_exc:
+            logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
+            payload_base = final
+        payload_base["plan_id"] = plan_id
+        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+
+        plan_store.update(plan_id, complete_payload, status="completed")
+
+        await queue.put(_sse("complete", complete_payload))
+        await queue.put(_STREAM_SENTINEL)
+
+    except Exception as exc:
+        logger.exception("Unhandled error in graph background task")
+        plan_store.update(plan_id, {"error": str(exc)}, status="error")
+        await queue.put(_sse("error", {"phase": "unknown", "message": str(exc)}))
+        await queue.put(_STREAM_SENTINEL)
+
+
+# ── _stream_graph kept for backward-compatible tests (P0.2) ─────
 
 async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str, None]:
     """Run the LangGraph pipeline and yield SSE events per node.
 
-    M6: uses stream_mode="updates" to get each node's partial output,
-    enabling fine-grained SSE events (partial / budget_alert /
-    weather_swap / message) in addition to the base step / complete /
-    error events.
-
-    P0.1: accepts a plan_id, persists the final result to PostgreSQL,
-    and includes plan_id in the complete event payload.
+    Kept for test compatibility (test_sse.py calls this directly).
+    Production code uses _run_graph_to_queue instead.
     """
     try:
         final_state: dict = {}
@@ -166,7 +217,6 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
                         yield event
                         await asyncio.sleep(0)
 
-        # ── emit final result ─────────────────────────────────────
         final = final_state.get("final_itinerary", {})
         warnings = final_state.get("warnings", [])
         try:
@@ -175,13 +225,10 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
         except Exception as val_exc:
             logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
             payload_base = final
-        # P0.1: inject plan_id into the response
         payload_base["plan_id"] = plan_id
         complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
 
-        # P0.1: persist the completed plan
         plan_store.update(plan_id, complete_payload, status="completed")
-
         yield _sse("complete", complete_payload)
 
     except Exception as exc:
@@ -190,26 +237,19 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
         yield _sse("error", {"phase": "unknown", "message": str(exc)})
 
 
+# ── Plan endpoints (P0.3: two-phase lifecycle) ─────────────────
+
 @app.post("/api/plan")
 async def create_plan(request: TripPlanRequest):
-    """Receive trip parameters, run the agent graph, and stream progress via SSE.
+    """Create a plan and launch the graph pipeline in the background.
 
-    P0.1: generates a plan_id upfront, persists the request as 'processing',
-    and includes plan_id in the SSE complete event so the frontend can
-    recover via GET /api/plan/{plan_id} on refresh.
-
-    Events fired (M6):
-        step          — per-node progress notification
-        partial       — day-level itinerary chunk (progressive render)
-        budget_alert  — budget summary with downgrade info
-        weather_swap  — weather-driven activity replacement
-        message       — couple note for an activity
-        complete      — final TripPlanResponse JSON (with plan_id)
-        error         — terminal error message
+    P0.3: returns JSON {plan_id, stream_url} immediately. The client
+    then connects to GET /api/plan/{plan_id}/stream to consume SSE events.
+    The graph runs exactly once per plan_id — reconnects to the GET
+    stream do NOT re-run the pipeline.
     """
     plan_id = generate_plan_id()
 
-    # Persist request immediately as 'processing'
     request_dict = request.model_dump(mode="json")
     plan_store.save(plan_id, request_dict, status="processing")
 
@@ -228,21 +268,76 @@ async def create_plan(request: TripPlanRequest):
         "warnings": [],
     }
 
+    # Create event queue and launch background graph task
+    queue: asyncio.Queue = asyncio.Queue()
+    plan_streams[plan_id] = queue
+    asyncio.create_task(_run_graph_to_queue(initial_state, plan_id, queue))
+
+    stream_url = f"/api/plan/{plan_id}/stream"
+    return {
+        "plan_id": plan_id,
+        "stream_url": stream_url,
+        "status": "processing",
+    }
+
+
+@app.get("/api/plan/{plan_id}/stream")
+async def stream_plan(plan_id: str):
+    """SSE endpoint: consume events from the background graph task.
+
+    P0.3: if the plan is already completed in PostgreSQL (e.g. client
+    reconnects after the graph finished), replays the complete event
+    directly. Otherwise, streams live events from the in-memory queue.
+    """
+    # Check if plan already completed — replay from DB
+    record = plan_store.get(plan_id)
+    if record and record.get("status") == "completed" and record.get("response"):
+        response = record["response"]
+        if "plan_id" not in response:
+            response["plan_id"] = plan_id
+        async def _replay():
+            yield _sse("complete", response)
+        return StreamingResponse(
+            _replay(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+        )
+
+    if record and record.get("status") == "error":
+        async def _replay_error():
+            yield _sse("error", {"phase": "unknown", "message": "Plan generation failed"})
+        return StreamingResponse(
+            _replay_error(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+        )
+
+    # Live stream from queue
+    queue = plan_streams.get(plan_id)
+    if queue is None:
+        return JSONResponse(status_code=404, content={"detail": "Stream not found. The plan may have expired."})
+
+    async def _live_stream():
+        try:
+            while True:
+                event = await queue.get()
+                if event is _STREAM_SENTINEL:
+                    break
+                yield event
+        except asyncio.CancelledError:
+            pass
+        finally:
+            # Clean up the queue when the last consumer disconnects
+            plan_streams.pop(plan_id, None)
+
     return StreamingResponse(
-        _stream_graph(initial_state, plan_id),
+        _live_stream(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "X-Plan-Id": plan_id,
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
 
 
 # ── REST endpoints (P0.1) ───────────────────────────────────────
-# NOTE: /api/plan/history must be declared before /api/plan/{plan_id}
-# to avoid the path param capturing "history".
 
 @app.get("/api/plan/history")
 async def list_plans(
