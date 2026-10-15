@@ -16,6 +16,20 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name, "").strip().lower()
+    if not value:
+        return default
+    return value in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str) -> list[str]:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return []
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
 class Settings:
     """Centralized app settings."""
 
@@ -64,6 +78,17 @@ class Settings:
 
     # Redis (P1.1 对话会话存储)
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    # P3.1 鉴权：AUTH_ENABLED=false（默认）时跳过鉴权，保证开发/测试零回归；
+    # 生产环境设 true，客户端须在 X-API-Key 头携带 API_KEYS 白名单内的 key。
+    auth_enabled: bool = _env_bool("AUTH_ENABLED", False)
+    api_keys: list[str] = _env_list("API_KEYS")
+
+    # P3.1 限流：中间件始终挂载，但 RATE_LIMIT_ENABLED=false（默认）时不实际
+    # 计数，避免测试高频打端点触发 429；生产环境设 true 开启。
+    rate_limit_enabled: bool = _env_bool("RATE_LIMIT_ENABLED", False)
+    rate_limit_plan: str = os.getenv("RATE_LIMIT_PLAN", "10/minute")
+    rate_limit_chat: str = os.getenv("RATE_LIMIT_CHAT", "30/minute")
 
 
 settings = Settings()

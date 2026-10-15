@@ -5,9 +5,13 @@ import asyncio
 import logging
 from typing import AsyncGenerator, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from schemas import TripPlanRequest, TripPlanResponse
 from schemas.chat import ChatRequest, ChatReply
@@ -15,6 +19,8 @@ from agents.state import AgentState
 from agents.graph import graph
 from agents.conversation import handle_chat
 from services.storage import plan_store, generate_plan_id
+from deps import verify_api_key
+from config.settings import settings
 
 logger = logging.getLogger("coupletrip")
 
@@ -23,6 +29,13 @@ app = FastAPI(
     description="AI-powered couple travel planning agent",
     version="0.3.0",
 )
+
+# P3.1 限流：中间件始终挂载。RATE_LIMIT_ENABLED=false（默认）时不实际计数，
+# 避免测试高频请求触发 429；生产环境设 true 开启。
+limiter = Limiter(key_func=get_remote_address, enabled=settings.rate_limit_enabled)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,14 +56,15 @@ async def health_check():
 # ── Chat endpoint (P1.1) ─────────────────────────────────────────
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+@limiter.limit(settings.rate_limit_chat)
+async def chat(request: Request, body: ChatRequest, _: None = Depends(verify_api_key)):
     """Conversational endpoint: intent classification + slot extraction.
 
     Returns a ChatReply with the assistant's text, identified intent,
     merged slots, and — when slots are complete — a plan_request that
     can be fed directly to POST /api/plan.
     """
-    reply = await handle_chat(request.message, request.session_id)
+    reply = await handle_chat(body.message, body.session_id)
     return reply
 
 
@@ -256,7 +270,8 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
 # ── Plan endpoints (P0.3: two-phase lifecycle) ─────────────────
 
 @app.post("/api/plan")
-async def create_plan(request: TripPlanRequest):
+@limiter.limit(settings.rate_limit_plan)
+async def create_plan(request: Request, body: TripPlanRequest, _: None = Depends(verify_api_key)):
     """Create a plan and launch the graph pipeline in the background.
 
     P0.3: returns JSON {plan_id, stream_url} immediately. The client
@@ -266,18 +281,18 @@ async def create_plan(request: TripPlanRequest):
     """
     plan_id = generate_plan_id()
 
-    request_dict = request.model_dump(mode="json")
+    request_dict = body.model_dump(mode="json")
     plan_store.save(plan_id, request_dict, status="processing")
 
     initial_state: AgentState = {
         "user_input": {
-            "origin": request.origin,
-            "destination": request.destination,
-            "start_date": request.start_date.isoformat(),
-            "end_date": request.end_date.isoformat(),
-            "budget": request.budget,
-            "preferences": request.preferences,
-            "pace": request.pace.value,
+            "origin": body.origin,
+            "destination": body.destination,
+            "start_date": body.start_date.isoformat(),
+            "end_date": body.end_date.isoformat(),
+            "budget": body.budget,
+            "preferences": body.preferences,
+            "pace": body.pace.value,
         },
         "current_phase": "start",
         "error": "",
@@ -298,7 +313,7 @@ async def create_plan(request: TripPlanRequest):
 
 
 @app.get("/api/plan/{plan_id}/stream")
-async def stream_plan(plan_id: str):
+async def stream_plan(plan_id: str, _: None = Depends(verify_api_key)):
     """SSE endpoint: consume events from the background graph task.
 
     P0.3: if the plan is already completed in PostgreSQL (e.g. client
@@ -359,6 +374,7 @@ async def stream_plan(plan_id: str):
 async def list_plans(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=20, ge=1, le=100),
+    _: None = Depends(verify_api_key),
 ):
     """Return a paginated list of plan summaries, newest first."""
     offset = (page - 1) * size
@@ -371,7 +387,7 @@ async def list_plans(
 
 
 @app.get("/api/plan/{plan_id}")
-async def get_plan(plan_id: str):
+async def get_plan(plan_id: str, _: None = Depends(verify_api_key)):
     """Return a completed plan by ID (for refresh recovery)."""
     record = plan_store.get(plan_id)
     if record is None:
@@ -380,7 +396,7 @@ async def get_plan(plan_id: str):
 
 
 @app.delete("/api/plan/{plan_id}")
-async def delete_plan(plan_id: str):
+async def delete_plan(plan_id: str, _: None = Depends(verify_api_key)):
     """Delete a plan record."""
     deleted = plan_store.delete(plan_id)
     if not deleted:
@@ -391,7 +407,7 @@ async def delete_plan(plan_id: str):
 # ── Feedback endpoint (P2.3) ────────────────────────────────────
 
 @app.post("/api/plan/{plan_id}/feedback")
-async def plan_feedback(plan_id: str, activity_name: str, thumbs: str):
+async def plan_feedback(plan_id: str, activity_name: str, thumbs: str, _: None = Depends(verify_api_key)):
     """Record user thumbs up/down for an activity in a completed plan.
 
     Query params:

@@ -41,6 +41,11 @@ services:
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
       - PG_DSN=postgresql://coupletrip:${POSTGRES_PASSWORD:-coupletrip_dev}@db:5432/coupletrip
       - REDIS_URL=redis://redis:6379/0
+      - AUTH_ENABLED=${AUTH_ENABLED:-false}
+      - API_KEYS=${API_KEYS:-}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-false}
+      - RATE_LIMIT_PLAN=${RATE_LIMIT_PLAN:-10/minute}
+      - RATE_LIMIT_CHAT=${RATE_LIMIT_CHAT:-30/minute}
     depends_on:
       db:
         condition: service_healthy

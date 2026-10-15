@@ -16,6 +16,11 @@ export interface SSEHandlers {
   onError?: (payload: unknown) => void;
 }
 
+// P3.1: 构建带 X-API-Key 的请求头（仅当构建时注入了 VITE_API_KEY）。
+const API_KEY_HEADER: Record<string, string> = import.meta.env.VITE_API_KEY
+  ? { "X-API-Key": import.meta.env.VITE_API_KEY }
+  : {};
+
 interface PostStreamHandlers {
   body: unknown;
   onStep?: (event: PlanStepEvent) => void;
@@ -170,6 +175,7 @@ async function consumeGetOnce(
     method: "GET",
     headers: {
       Accept: "text/event-stream",
+      ...API_KEY_HEADER,
     },
   });
 
@@ -241,6 +247,7 @@ async function consumeOnce(
     headers: {
       "Content-Type": "application/json",
       Accept: "text/event-stream",
+      ...API_KEY_HEADER,
     },
     body: JSON.stringify(handlers.body),
   });

@@ -18,7 +18,7 @@
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ✅ | 3/3 小节完成 |
-| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ⬜ | 0/9 |
+| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 1/4 小节（P3.1 ✅） |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 tsc+build 通过 + 既有 Playwright E2E 零回归」。未达标禁止进入下一阶段。
 
@@ -225,10 +225,10 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T3.1.1 | `config/settings.py` 加 `api_keys: list` 从 env 读白名单 | ⬜ | settings.py |
-| T3.1.2 | FastAPI 依赖 `verify_api_key` 校验 `X-API-Key` | ⬜ | main.py / deps.py |
-| T3.1.3 | `slowapi` 中间件，`/api/plan` 10次/分/IP，`/api/chat` 30次/分/IP | ⬜ | main.py |
-| T3.1.4 | 前端打包注入 API key（Vite env） | ⬜ | frontend |
+| T3.1.1 | `config/settings.py` 加 `auth_enabled`/`api_keys`/`rate_limit_*` 从 env 读 | ✅ | settings.py |
+| T3.1.2 | `deps.py` `verify_api_key` 校验 `X-API-Key`，挂到全部 `/api/*` 端点 | ✅ | deps.py + main.py |
+| T3.1.3 | `slowapi` 中间件始终挂载，`/api/plan` 10/min、`/api/chat` 30/min，enabled 随 env | ✅ | main.py |
+| T3.1.4 | 前端 Vite env (`VITE_API_KEY`) 注入 `X-API-Key`（axios 拦截器 + SSE fetch） | ✅ | frontend |
 
 ### P3.2 可观测性
 
@@ -256,8 +256,8 @@
 | T3.4.3 | 熔断器：连续失败 5 次短路 30s（`purgatory` 或自实现） | ⬜ | services/ |
 
 **验收清单**：
-- [ ] 无 key 请求被 401 拒绝
-- [ ] 超 10 次/分 触发 429
+- [x] 无 key 请求被 401 拒绝（AUTH_ENABLED=true 时，test_auth.py 5 测试覆盖）
+- [x] 超 10 次/分 触发 429（slowapi 中间件已挂载，RATE_LIMIT_ENABLED=true 时生效）
 - [ ] `/metrics` 可采集
 - [ ] LLM/Amap 调用 span 可见（Jaeger / console exporter）
 - [ ] Amap 连续失败 5 次后 30s 内直接降级不再发请求

@@ -11,6 +11,15 @@ export const api = axios.create({
   },
 });
 
+// P3.1: 如果构建时注入了 VITE_API_KEY，在每个请求头加上 X-API-Key。
+const apiKey = import.meta.env.VITE_API_KEY;
+if (apiKey) {
+  api.interceptors.request.use((config) => {
+    config.headers.set("X-API-Key", apiKey);
+    return config;
+  });
+}
+
 export class ApiError extends Error {
   status?: number;
   code?: string;
