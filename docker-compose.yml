@@ -47,6 +47,7 @@ services:
       - RATE_LIMIT_PLAN=${RATE_LIMIT_PLAN:-10/minute}
       - RATE_LIMIT_CHAT=${RATE_LIMIT_CHAT:-30/minute}
       - JSON_LOGS=${JSON_LOGS:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
     depends_on:
       db:
         condition: service_healthy

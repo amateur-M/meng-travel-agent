@@ -1,98 +1,104 @@
-"""Application configuration loaded from environment variables."""
+"""Application configuration via pydantic-settings (P3.3).
 
-import os
-from dotenv import load_dotenv
+Replaces the hand-rolled os.getenv Settings with BaseSettings for
+type-safe env binding, validation, and .env file layering. The module
+still exports a `settings` singleton so all `from config.settings
+import settings` call sites — and conftest monkeypatch paths — remain
+unchanged.
+"""
 
-load_dotenv()
+from typing import List
 
-
-def _env_int(name: str, default: int) -> int:
-    value = os.getenv(name, "").strip()
-    if not value:
-        return default
-    try:
-        return int(value)
-    except ValueError:
-        return default
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _env_bool(name: str, default: bool) -> bool:
-    value = os.getenv(name, "").strip().lower()
-    if not value:
-        return default
-    return value in {"1", "true", "yes", "on"}
-
-
-def _env_list(name: str) -> list[str]:
-    raw = os.getenv(name, "").strip()
-    if not raw:
+def _split_csv(value: str | List[str]) -> List[str]:
+    """Accept both JSON lists and comma-separated strings for env compat."""
+    if isinstance(value, list):
+        return value
+    if not value or not value.strip():
         return []
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
-class Settings:
-    """Centralized app settings."""
+class Settings(BaseSettings):
+    """Centralized app settings, bound from environment / .env files."""
 
-    # OpenAI
-    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
-    openai_model: str = os.getenv("OPENAI_MODEL", "gpt-4o")
-
-    # DeepSeek
-    deepseek_api_key: str = os.getenv("DEEPSEEK_API_KEY", "")
-    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-
-    # Qwen (Tongyi Qianwen)
-    qwen_api_key: str = os.getenv("QWEN_API_KEY", "")
-    qwen_model: str = os.getenv("QWEN_MODEL", "qwen-plus")
-    qwen_base_url: str = os.getenv("QWEN_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-
-    # Kimi (Moonshot)
-    kimi_api_key: str = os.getenv("KIMI_API_KEY", "")
-    kimi_model: str = os.getenv("KIMI_MODEL", "moonshot-v1-8k")
-    kimi_base_url: str = os.getenv("KIMI_BASE_URL", "https://api.moonshot.cn/v1")
-
-    # Default LLM provider: "openai" | "deepseek" | "qwen" | "kimi"
-    default_llm_provider: str = os.getenv("DEFAULT_LLM_PROVIDER", "openai")
-
-    # Weather (QWeather JWT / 和风天气, fallback OpenWeatherMap)
-    weather_api_key: str = os.getenv("WEATHER_API_KEY", "")
-    weather_provider: str = os.getenv("WEATHER_PROVIDER", "qweather")
-    qweather_base_url: str = os.getenv("QWEATHER_BASE_URL", "https://devapi.qweather.com")
-    qweather_auth_mode: str = os.getenv("QWEATHER_AUTH_MODE", "auto")
-    qweather_credential_id: str = os.getenv("QWEATHER_CREDENTIAL_ID", "")
-    qweather_project_id: str = os.getenv("QWEATHER_PROJECT_ID", "")
-    qweather_private_key: str = os.getenv("QWEATHER_PRIVATE_KEY", "")
-    qweather_private_key_path: str = os.getenv("QWEATHER_PRIVATE_KEY_PATH", "")
-    qweather_jwt_ttl_seconds: int = _env_int("QWEATHER_JWT_TTL_SECONDS", 900)
-
-    # Maps
-    maps_api_key: str = os.getenv("MAPS_API_KEY", "")
-    maps_provider: str = os.getenv("MAPS_PROVIDER", "amap")
-
-    # PostgreSQL (P0.1 行程持久化)
-    pg_dsn: str = os.getenv(
-        "PG_DSN",
-        "postgresql://coupletrip:coupletrip_dev@localhost:5432/coupletrip",
+    model_config = SettingsConfigDict(
+        env_file=(".env.dev", ".env", ".env.prod"),
+        env_file_encoding="utf-8",
+        extra="ignore",
     )
 
+    # OpenAI
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o"
+
+    # DeepSeek
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
+    deepseek_base_url: str = "https://api.deepseek.com"
+
+    # Qwen (Tongyi Qianwen)
+    qwen_api_key: str = ""
+    qwen_model: str = "qwen-plus"
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # Kimi (Moonshot)
+    kimi_api_key: str = ""
+    kimi_model: str = "moonshot-v1-8k"
+    kimi_base_url: str = "https://api.moonshot.cn/v1"
+
+    # Default LLM provider: "openai" | "deepseek" | "qwen" | "kimi"
+    default_llm_provider: str = "openai"
+
+    # Weather (QWeather JWT / 和风天气, fallback OpenWeatherMap)
+    weather_api_key: str = ""
+    weather_provider: str = "qweather"
+    qweather_base_url: str = "https://devapi.qweather.com"
+    qweather_auth_mode: str = "auto"
+    qweather_credential_id: str = ""
+    qweather_project_id: str = ""
+    qweather_private_key: str = ""
+    qweather_private_key_path: str = ""
+    qweather_jwt_ttl_seconds: int = 900
+
+    # Maps
+    maps_api_key: str = ""
+    maps_provider: str = "amap"
+
+    # PostgreSQL (P0.1 行程持久化)
+    pg_dsn: str = "postgresql://coupletrip:coupletrip_dev@localhost:5432/coupletrip"
+
     # Redis (P1.1 对话会话存储)
-    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    redis_url: str = "redis://localhost:6379/0"
 
-    # P3.1 鉴权：AUTH_ENABLED=false（默认）时跳过鉴权，保证开发/测试零回归；
-    # 生产环境设 true，客户端须在 X-API-Key 头携带 API_KEYS 白名单内的 key。
-    auth_enabled: bool = _env_bool("AUTH_ENABLED", False)
-    api_keys: list[str] = _env_list("API_KEYS")
+    # P3.1 鉴权
+    auth_enabled: bool = False
+    api_keys: List[str] = []
 
-    # P3.1 限流：中间件始终挂载，但 RATE_LIMIT_ENABLED=false（默认）时不实际
-    # 计数，避免测试高频打端点触发 429；生产环境设 true 开启。
-    rate_limit_enabled: bool = _env_bool("RATE_LIMIT_ENABLED", False)
-    rate_limit_plan: str = os.getenv("RATE_LIMIT_PLAN", "10/minute")
-    rate_limit_chat: str = os.getenv("RATE_LIMIT_CHAT", "30/minute")
+    # P3.1 限流
+    rate_limit_enabled: bool = False
+    rate_limit_plan: str = "10/minute"
+    rate_limit_chat: str = "30/minute"
 
-    # P3.2 可观测性：JSON_LOGS=true（默认）输出结构化 JSON 日志；false 时用
-    # console 彩色渲染（开发调试友好）。
-    json_logs: bool = _env_bool("JSON_LOGS", True)
+    # P3.2 可观测性
+    json_logs: bool = True
+
+    # P3.3 CORS origins（逗号分隔）；默认开发环境，生产从 env 注入
+    cors_origins: List[str] = ["http://localhost:5173"]
+
+    # Allow comma-separated strings from env for list fields
+    @field_validator("api_keys", mode="before")
+    @classmethod
+    def _parse_api_keys(cls, v):
+        return _split_csv(v)
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        return _split_csv(v)
 
 
 settings = Settings()

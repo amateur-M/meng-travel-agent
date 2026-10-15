@@ -18,7 +18,7 @@
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ✅ | 3/3 小节完成 |
-| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 2/4 小节（P3.1 ✅ P3.2 ✅） |
+| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 3/4 小节（P3.1 ✅ P3.2 ✅ P3.3 ✅） |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 tsc+build 通过 + 既有 Playwright E2E 零回归」。未达标禁止进入下一阶段。
 
@@ -243,9 +243,9 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T3.3.1 | `config/settings.py` 迁 `pydantic-settings.BaseSettings` | ⬜ | settings.py |
-| T3.3.2 | 支持 `.env.dev`/`.env.prod` 分层；CORS origins 从 env 读 | ⬜ | settings.py + main.py |
-| T3.3.3 | `pyproject.toml` 与 `requirements.txt` 合并为单一来源 | ⬜ | pyproject.toml |
+| T3.3.1 | `config/settings.py` 迁 `pydantic-settings.BaseSettings` | ✅ | settings.py |
+| T3.3.2 | 支持 `.env.dev`/`.env.prod` 分层；CORS origins 从 env 读 | ✅ | settings.py + main.py |
+| T3.3.3 | `pyproject.toml` 与 `requirements.txt` 合并为单一来源 | ✅ | pyproject.toml + requirements.txt |
 
 ### P3.4 外部 API 韧性
 
