@@ -16,6 +16,7 @@ from langchain_core.tools import tool
 
 from config.settings import settings
 from services.qweather_auth import build_qweather_headers
+from services.resilience import resilient_call, resilient_call_async
 
 logger = logging.getLogger("coupletrip")
 
@@ -120,16 +121,20 @@ async def _fetch_openweathermap(city: str, start: str, end: str) -> dict:
         raise ValueError("OPENWEATHERMAP_API_KEY not configured")
 
     url = "https://api.openweathermap.org/data/2.5/forecast"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, params={
-            "q": city,
-            "appid": api_key,
-            "units": "metric",
-            "lang": "zh_cn",
-            "cnt": 40,
-        })
-        resp.raise_for_status()
-        data = resp.json()
+
+    async def _do_get():
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(url, params={
+                "q": city,
+                "appid": api_key,
+                "units": "metric",
+                "lang": "zh_cn",
+                "cnt": 40,
+            })
+            resp.raise_for_status()
+            return resp.json()
+
+    data = await resilient_call_async("openweathermap", _do_get)
 
     # Group 3-hourly entries by day
     by_day: dict = {}
@@ -260,16 +265,20 @@ def _forecast_days(start: str, end: str) -> int:
 async def _lookup_qweather_city(city: str) -> tuple[float, float]:
     """Resolve a city name to lat/lon with QWeather GeoAPI."""
     url = f"{settings.qweather_base_url.rstrip('/')}/geo/v2/city/lookup"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            url,
-            params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
-            headers=_qweather_headers(),
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("code") != "200" or not data.get("location"):
-            raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
+
+    async def _do_get():
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                url,
+                params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
+                headers=_qweather_headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    data = await resilient_call_async("qweather", _do_get)
+    if data.get("code") != "200" or not data.get("location"):
+        raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
 
     location = data["location"][0]
     return float(location["lat"]), float(location["lon"])
@@ -278,16 +287,20 @@ async def _lookup_qweather_city(city: str) -> tuple[float, float]:
 def _lookup_qweather_city_sync(city: str) -> tuple[float, float]:
     """Synchronous city-to-lat/lon lookup for QWeather GeoAPI."""
     url = f"{settings.qweather_base_url.rstrip('/')}/geo/v2/city/lookup"
-    with httpx.Client(timeout=10.0) as client:
-        resp = client.get(
-            url,
-            params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
-            headers=_qweather_headers(),
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        if data.get("code") != "200" or not data.get("location"):
-            raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
+
+    def _do_get():
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(
+                url,
+                params={"location": city, "range": "cn", "number": "5", "lang": "zh"},
+                headers=_qweather_headers(),
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+    data = resilient_call("qweather", _do_get)
+    if data.get("code") != "200" or not data.get("location"):
+        raise ValueError(f"QWeather city lookup failed: {data.get('code')}")
 
     location = data["location"][0]
     return float(location["lat"]), float(location["lon"])
@@ -302,18 +315,21 @@ async def _fetch_qweather(city: str, start: str, end: str) -> dict:
     lat, lon = await _lookup_qweather_city(city)
     weather_url = f"{settings.qweather_base_url.rstrip('/')}/weather/v1/daily/{lat}/{lon}"
 
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        weather_resp = await client.get(
-            weather_url,
-            params={
-                "days": str(_forecast_days(start, end)),
-                "localTime": "true",
-                "lang": "zh",
-            },
-            headers=_qweather_headers(),
-        )
-        weather_resp.raise_for_status()
-        weather_data = weather_resp.json()
+    async def _do_get():
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            weather_resp = await client.get(
+                weather_url,
+                params={
+                    "days": str(_forecast_days(start, end)),
+                    "localTime": "true",
+                    "lang": "zh",
+                },
+                headers=_qweather_headers(),
+            )
+            weather_resp.raise_for_status()
+            return weather_resp.json()
+
+    weather_data = await resilient_call_async("qweather", _do_get)
 
     daily = weather_data.get("days", [])
     if not daily:
@@ -331,18 +347,21 @@ def _fetch_qweather_sync(city: str, start: str, end: str) -> dict:
     lat, lon = _lookup_qweather_city_sync(city)
     weather_url = f"{settings.qweather_base_url.rstrip('/')}/weather/v1/daily/{lat}/{lon}"
 
-    with httpx.Client(timeout=10.0) as client:
-        weather_resp = client.get(
-            weather_url,
-            params={
-                "days": str(_forecast_days(start, end)),
-                "localTime": "true",
-                "lang": "zh",
-            },
-            headers=_qweather_headers(),
-        )
-        weather_resp.raise_for_status()
-        weather_data = weather_resp.json()
+    def _do_get():
+        with httpx.Client(timeout=10.0) as client:
+            weather_resp = client.get(
+                weather_url,
+                params={
+                    "days": str(_forecast_days(start, end)),
+                    "localTime": "true",
+                    "lang": "zh",
+                },
+                headers=_qweather_headers(),
+            )
+            weather_resp.raise_for_status()
+            return weather_resp.json()
+
+    weather_data = resilient_call("qweather", _do_get)
 
     daily = weather_data.get("days", [])
     if not daily:
@@ -358,16 +377,20 @@ def _fetch_openweathermap_sync(city: str, start: str, end: str) -> dict:
         raise ValueError("WEATHER_API_KEY not configured for OpenWeatherMap")
 
     url = "https://api.openweathermap.org/data/2.5/forecast"
-    with httpx.Client(timeout=10.0) as client:
-        resp = client.get(url, params={
-            "q": city,
-            "appid": api_key,
-            "units": "metric",
-            "lang": "zh_cn",
-            "cnt": 40,
-        })
-        resp.raise_for_status()
-        data = resp.json()
+
+    def _do_get():
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(url, params={
+                "q": city,
+                "appid": api_key,
+                "units": "metric",
+                "lang": "zh_cn",
+                "cnt": 40,
+            })
+            resp.raise_for_status()
+            return resp.json()
+
+    data = resilient_call("openweathermap", _do_get)
 
     by_day: dict = {}
     for entry in data.get("list", []):

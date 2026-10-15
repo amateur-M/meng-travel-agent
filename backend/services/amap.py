@@ -8,6 +8,7 @@ with the Amap Web Service API so every recommendation comes from live data.
 import httpx
 
 from config.settings import settings
+from services.resilience import resilient_call
 
 
 AMAP_BASE_URL = "https://restapi.amap.com/v3"
@@ -52,21 +53,24 @@ def _require_key() -> str:
 def search_pois(city: str, types: str, offset: int = 20) -> list[dict]:
     """Return raw Amap POI records for a city and POI category codes."""
     key = _require_key()
-    response = httpx.get(
-        f"{AMAP_BASE_URL}/place/text",
-        params={
-            "key": key,
-            "types": types,
-            "city": resolve_adcode(city),
-            "offset": str(offset),
-            "page": "1",
-            "extensions": "all",
-        },
-        timeout=15.0,
-    )
-    response.raise_for_status()
-    data = response.json()
 
+    def _do_get():
+        response = httpx.get(
+            f"{AMAP_BASE_URL}/place/text",
+            params={
+                "key": key,
+                "types": types,
+                "city": resolve_adcode(city),
+                "offset": str(offset),
+                "page": "1",
+                "extensions": "all",
+            },
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    data = resilient_call("amap", _do_get)
     if data.get("status") != "1":
         raise RuntimeError(f"高德地点搜索失败: {data.get('info') or '未知错误'}")
 
@@ -76,19 +80,22 @@ def search_pois(city: str, types: str, offset: int = 20) -> list[dict]:
 def driving_route(origin: str, destination: str) -> dict:
     """Return the first real driving route path between two lng,lat strings."""
     key = _require_key()
-    response = httpx.get(
-        f"{AMAP_BASE_URL}/direction/driving",
-        params={
-            "key": key,
-            "origin": origin,
-            "destination": destination,
-            "extensions": "base",
-        },
-        timeout=15.0,
-    )
-    response.raise_for_status()
-    data = response.json()
 
+    def _do_get():
+        response = httpx.get(
+            f"{AMAP_BASE_URL}/direction/driving",
+            params={
+                "key": key,
+                "origin": origin,
+                "destination": destination,
+                "extensions": "base",
+            },
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    data = resilient_call("amap", _do_get)
     if data.get("status") != "1":
         raise RuntimeError(f"高德路线规划失败: {data.get('info') or '未知错误'}")
 

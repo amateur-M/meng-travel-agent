@@ -18,7 +18,7 @@
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ✅ | 3/3 小节完成 |
-| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 3/4 小节（P3.1 ✅ P3.2 ✅ P3.3 ✅） |
+| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | ✅ | 4/4 小节完成 |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 tsc+build 通过 + 既有 Playwright E2E 零回归」。未达标禁止进入下一阶段。
 
@@ -251,9 +251,9 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T3.4.1 | `services/amap.py` 加指数退避重试 3 次（`tenacity`） | ⬜ | amap.py |
-| T3.4.2 | QWeather 调用同上 | ⬜ | qweather_auth.py/天气工具 |
-| T3.4.3 | 熔断器：连续失败 5 次短路 30s（`purgatory` 或自实现） | ⬜ | services/ |
+| T3.4.1 | `services/amap.py` 加指数退避重试 3 次（`tenacity`） | ✅ | amap.py |
+| T3.4.2 | QWeather 调用同上 | ✅ | weather_tool.py |
+| T3.4.3 | 熔断器：连续失败 5 次短路 30s（`purgatory` 或自实现） | ✅ | services/resilience.py |
 
 **验收清单**：
 - [x] 无 key 请求被 401 拒绝（AUTH_ENABLED=true 时，test_auth.py 5 测试覆盖）
@@ -261,7 +261,7 @@
 - [x] `/metrics` 可采集（test_observability.py 验证 200 + Prometheus 文本格式）
 - [x] SSE complete payload 含 `degraded` 标志（test_observability.py 验证）
 - [ ] LLM/Amap 调用 span 可见（Jaeger / console exporter）— 跳过（本轮不做 OTel）
-- [ ] Amap 连续失败 5 次后 30s 内直接降级不再发请求
+- [x] Amap 连续失败 5 次后 30s 内直接降级不再发请求（test_resilience.py 10 测试覆盖）
 
 ---
 
