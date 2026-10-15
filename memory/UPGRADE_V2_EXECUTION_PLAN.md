@@ -18,7 +18,7 @@
 | **P0 地基修复** | 行程持久化 + LLM 异步化 + SSE 断线重连 | ✅ | 3/3 小节完成 |
 | **P1 对话式** | M8 后端 + modify_plan + M9 前端 | ✅ | 3/3 小节完成 |
 | **P2 内容质量** | couple_score 重写 + curated + 反馈循环 | ✅ | 3/3 小节完成 |
-| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 1/4 小节（P3.1 ✅） |
+| **P3 工程化** | 鉴权限流 + 可观测性 + 配置 + 韧性 | 🔄 | 2/4 小节（P3.1 ✅ P3.2 ✅） |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 tsc+build 通过 + 既有 Playwright E2E 零回归」。未达标禁止进入下一阶段。
 
@@ -234,10 +234,10 @@
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T3.2.1 | `structlog` 替换裸 logging，结构化 JSON 日志 | ⬜ | 全后端 |
-| T3.2.2 | `prometheus-fastapi-instrumentator` 暴露 `/metrics` | ⬜ | main.py |
-| T3.2.3 | OpenTelemetry tracing：至少 instrument LLM + Amap/QWeather 调用 | ⬜ | services/ |
-| T3.2.4 | SSE `complete` payload 加 `degraded` 标志（复用 issues 文档 P10 思路） | ⬜ | main.py |
+| T3.2.1 | `structlog` 替换裸 logging，结构化 JSON 日志 | ✅ | logging_config.py |
+| T3.2.2 | `prometheus-fastapi-instrumentator` 暴露 `/metrics` | ✅ | main.py |
+| T3.2.3 | OpenTelemetry tracing：至少 instrument LLM + Amap/QWeather 调用 | ⏸ 跳过（本轮选轻量：structlog + metrics） | — |
+| T3.2.4 | SSE `complete` payload 加 `degraded` 标志（复用 issues 文档 P10 思路） | ✅ | main.py |
 
 ### P3.3 配置规范化
 
@@ -258,8 +258,9 @@
 **验收清单**：
 - [x] 无 key 请求被 401 拒绝（AUTH_ENABLED=true 时，test_auth.py 5 测试覆盖）
 - [x] 超 10 次/分 触发 429（slowapi 中间件已挂载，RATE_LIMIT_ENABLED=true 时生效）
-- [ ] `/metrics` 可采集
-- [ ] LLM/Amap 调用 span 可见（Jaeger / console exporter）
+- [x] `/metrics` 可采集（test_observability.py 验证 200 + Prometheus 文本格式）
+- [x] SSE complete payload 含 `degraded` 标志（test_observability.py 验证）
+- [ ] LLM/Amap 调用 span 可见（Jaeger / console exporter）— 跳过（本轮不做 OTel）
 - [ ] Amap 连续失败 5 次后 30s 内直接降级不再发请求
 
 ---

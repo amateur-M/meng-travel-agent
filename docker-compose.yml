@@ -46,6 +46,7 @@ services:
       - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-false}
       - RATE_LIMIT_PLAN=${RATE_LIMIT_PLAN:-10/minute}
       - RATE_LIMIT_CHAT=${RATE_LIMIT_CHAT:-30/minute}
+      - JSON_LOGS=${JSON_LOGS:-true}
     depends_on:
       db:
         condition: service_healthy

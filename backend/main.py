@@ -8,6 +8,7 @@ from typing import AsyncGenerator, Optional
 from fastapi import Depends, FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -21,6 +22,10 @@ from agents.conversation import handle_chat
 from services.storage import plan_store, generate_plan_id
 from deps import verify_api_key
 from config.settings import settings
+from logging_config import configure_logging
+
+# P3.2: 结构化日志（JSON），在 app 创建前配置以覆盖全部模块
+configure_logging(json_logs=settings.json_logs)
 
 logger = logging.getLogger("coupletrip")
 
@@ -29,6 +34,9 @@ app = FastAPI(
     description="AI-powered couple travel planning agent",
     version="0.3.0",
 )
+
+# P3.2: Prometheus metrics 暴露 /metrics
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 # P3.1 限流：中间件始终挂载。RATE_LIMIT_ENABLED=false（默认）时不实际计数，
 # 避免测试高频请求触发 429；生产环境设 true 开启。
@@ -207,7 +215,8 @@ async def _run_graph_to_queue(initial_state: dict, plan_id: str, queue: asyncio.
             logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
             payload_base = final
         payload_base["plan_id"] = plan_id
-        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+        degraded = bool(warnings)
+        complete_payload = {**payload_base, "warnings": warnings, "degraded": degraded} if warnings else {**payload_base, "degraded": degraded}
 
         plan_store.update(plan_id, complete_payload, status="completed")
 
@@ -256,7 +265,8 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
             logger.warning("TripPlanResponse validation failed, emitting raw dict: %s", val_exc)
             payload_base = final
         payload_base["plan_id"] = plan_id
-        complete_payload = {**payload_base, "warnings": warnings} if warnings else payload_base
+        degraded = bool(warnings)
+        complete_payload = {**payload_base, "warnings": warnings, "degraded": degraded} if warnings else {**payload_base, "degraded": degraded}
 
         plan_store.update(plan_id, complete_payload, status="completed")
         yield _sse("complete", complete_payload)

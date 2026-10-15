@@ -90,5 +90,9 @@ class Settings:
     rate_limit_plan: str = os.getenv("RATE_LIMIT_PLAN", "10/minute")
     rate_limit_chat: str = os.getenv("RATE_LIMIT_CHAT", "30/minute")
 
+    # P3.2 可观测性：JSON_LOGS=true（默认）输出结构化 JSON 日志；false 时用
+    # console 彩色渲染（开发调试友好）。
+    json_logs: bool = _env_bool("JSON_LOGS", True)
+
 
 settings = Settings()
