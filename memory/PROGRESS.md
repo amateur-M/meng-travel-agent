@@ -10,6 +10,10 @@
 | M5 | Done | 2026-10-02 | 2026-10-02 | Rhythm control + couple experience |
 | M6 | Done | 2026-10-03 | 2026-10-03 | SSE streaming enhancement |
 | M7 | Done | 2026-10-03 | 2026-10-03 | Testing + deployment |
+| V2-P0 | Done | 2026-10-14 | 2026-10-14 | 地基修复：PG 持久化 + LLM 异步化 + SSE 重连不重跑 |
+| V2-P1 | Done | 2026-10-14 | 2026-10-16 | 对话式：Redis 会话 + 槽位后处理 + Chat UI + modify_plan |
+| V2-P2 | Done | 2026-10-14 | 2026-10-14 | 内容质量：couple_score 重写 + curated POI + 反馈闭环 |
+| V2-P3 | Done | 2026-10-15 | 2026-10-15 | 工程化：鉴权限流 + 可观测性 + 配置规范化 + 外部 API 韧性 |
 
 ## M0 Completion Checklist
 
@@ -272,3 +276,54 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 ### 验证
 - [x] `npm run build`（`tsc -b && vite build`）通过 — sse.ts 类型冲突修复后无构建错误
 - [x] E2E 测试与后端 pytest 需运行时环境，未在本次执行（CI 流水线会在 push 时自动运行）
+
+---
+
+## V2 升级执行（P0–P3）
+
+> 方案与理由见 `UPGRADE_V2_AUDIT.md`，任务级执行清单见 `UPGRADE_V2_EXECUTION_PLAN.md`。
+> 本节只记录**已实现并验证**的产出，测试数字为实测值。
+
+### P0 地基修复（2026-10-14）
+
+- [x] P0.1 行程持久化：`docker-compose.yml` 加 `db`(postgres:16-alpine) + volume；`services/storage.py` `PlanStore`（JSONB 存 response、连接池、DDL 幂等、PG 不可达时优雅降级）；`POST /api/plan` 先写 `status=processing` 再写回 `completed`
+- [x] P0.1 补齐 ARCHITECTURE.md 承诺的 4 端点：`GET /api/plan/{id}`、`GET /api/plan/history?page=&size=`、`DELETE /api/plan/{id}`，SSE `complete` 事件带 `plan_id`
+- [x] P0.1 前端：`tripStore` 接收 `plan_id`，`/result?plan_id=xxx` 走 REST 恢复，`Loading` 支持 `?plan_id=` 直连
+- [x] P0.2 LLM 异步化：`services/llm.py` 新增 `acall_llm()`（`llm.ainvoke()`），保留 `call_llm` 兼容；10 个节点全部改 `async def`
+- [x] P0.3 SSE 重连不重跑：`POST /api/plan` 返回 `{plan_id, stream_url}` 并后台投递任务（`asyncio.create_task` + 内存事件队列）；新增 `GET /api/plan/{plan_id}/stream`，已完成则从 PostgreSQL 重放；前端拆 `startPlan()` / `resumeStream(id)`
+
+### P1 对话式（2026-10-14 → 2026-10-16）
+
+- [x] P1.1 `POST /api/chat`：`services/session_store.py`（`redis.asyncio`、key `chat:{session_id}`、TTL 30min）+ `schemas/chat.py` + `prompts/chat_intent_prompt.md` + `agents/conversation.py`（单次 `acall_llm` 出意图与槽位、Redis 槽位合并、ready 判定、Redis 宕机优雅降级）
+- [x] P1.1 `postprocess_slots()` 确定性后处理：相对日期（"下周末"→推算）、预算单位归一（"5千"→5000、"1.5万"→15000）
+- [x] P1.3 对话前端：`pages/Chat.tsx` + `components/Chat/{ChatWindow,ChatInput,SlotPanel}` + `services/chat.ts` + `stores/chatStore.ts`；路由 `/` → Chat、`/form` 保留旧表单；sessionStorage 持久化 `session_id`
+- [x] P1.2 `modify_plan` 增量调整（2026-10-16 收口）：`ChatReply.modify_patch` + `conversation.py` `postprocess_patch()` 解析增量修改并**合并回槽位**、重置 ready（不自动重新规划）；`chatStore` 检测到 patch 后合并进 `planRequest` 并重新武装规划按钮
+  - 确定性后处理覆盖：预算单位归一（"预算加到8千"→8000）、相对天数推移（"再加一天"→`end_date` 推后 1 天，跨月边界 09-30→10-01）、负向推移（"提前一天"）、裸时长重锚（"5天"→按 `start_date` 重算 `end_date`）、目的地变更（"换成杭州"）
+  - 修改识别的边界：已有完整槽位时才判定为修改；"想去三亚，预算8000元" 仍走新规划，不被预算关键词误判为修改
+  - 新增 `tests/test_chat.py` 30 个测试（`TestDayShiftParsing` / `TestPostprocessPatch` / `TestMockModify` / `TestLooksLikeModification` / `TestHandleChatModify`），覆盖 mock 与 LLM 两条路径
+
+### P2 内容质量（2026-10-14，替代原 M10 pgvector）
+
+- [x] P2.1 `_couple_score` 重写：rating 权重 0.5 + 类型匹配偏好 0.3 + 室内/户外季节适配 0.2；`food_search_tool.py` 评分逻辑统一
+- [x] P2.2 `backend/data/curated_pois.json` 人工精选（大理/三亚/杭州/成都/厦门），`search_poi` 先查 curated（city + preferences 过滤）再补 Amap，curated 项带 `source` 字段供 UI 展示"精选"徽章
+- [x] P2.3 反馈闭环：`PlanStore` 反馈表 + `POST /api/plan/{id}/feedback` + `scripts/recompute_scores.py` 离线重算 + `TimelineCard` 👍/👎 按钮
+- [x] 无 pgvector 依赖，复用 P0.1 的 postgres 实例
+
+### P3 工程化（2026-10-15）
+
+- [x] P3.1 鉴权与限流：`config/settings.py` 增 `auth_enabled` / `api_keys` / `rate_limit_*`；`deps.py` `verify_api_key` 校验 `X-API-Key` 并挂到全部 `/api/*`；`slowapi` 限流（`/api/plan` 10/min、`/api/chat` 30/min）；前端 `VITE_API_KEY` 经 axios 拦截器 + SSE fetch 注入
+- [x] P3.2 可观测性：`structlog` 结构化 JSON 日志（`logging_config.py`）、`prometheus-fastapi-instrumentator` 暴露 `/metrics`、SSE `complete` payload 增 `degraded` 标志
+- [x] P3.3 配置规范化：`config/settings.py` 迁 `pydantic-settings.BaseSettings`，支持 `.env.dev`/`.env`/`.env.prod` 分层，CORS origins 从 env 读；`pyproject.toml` 与 `requirements.txt` 依赖清单对齐为单一来源
+- [x] P3.4 外部 API 韧性：`services/resilience.py` 熔断器（连续失败 5 次短路 30s）+ `services/amap.py`、`tools/weather_tool.py` 指数退避重试 3 次（`tenacity`）
+- [ ] P3.2.3 OpenTelemetry tracing — **本轮明确跳过**，只做 structlog + metrics（LLM/外部 API span 不可见，后续要做需补）
+
+### V2 验证记录
+
+- [x] 后端 `pytest -q`：**267 passed + 1 skipped**（`backend/.venv` 实测；P1.2 收口新增 30 个测试，此前 237）
+- [x] 前端 `npm run build`（`tsc -b && vite build`）通过 — 2263 modules transformed，产物 `dist/assets/index-*.js` 397.76 kB（gzip 128.81 kB）
+- [x] 无 API key / 无 PG / 无 Redis 环境下全部走 mock 与优雅降级路径，不阻塞测试
+
+### 环境注意事项
+
+- `backend/.venv` 曾缺失 V2 新增依赖（`pydantic-settings`/`psycopg`/`psycopg-pool`/`redis`/`slowapi`/`structlog`/`prometheus-fastapi-instrumentator`），旧 `.venv` 直接跑 pytest 会 16 个 collection error。已执行 `pip install -r requirements.txt` 修复；**换机器或清理 venv 后需重跑该命令**。
+- `backend/.pytest_cache` 目录存在权限拒绝，导致无害的 `PytestCacheWarning`（不影响测试结果）。

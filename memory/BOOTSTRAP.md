@@ -1,14 +1,23 @@
-﻿## 项目：情侣旅游规划 Agent（CoupleTrip）
+## 项目：情侣旅游规划 Agent（CoupleTrip）
 
 **一句话描述**：AI 驱动的旅游规划助手，根据日期、出发地、目的地、天气、景点、美食、预算与偏好，自动生成可执行的情侣行程。
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M7 完成，全部 8 个里程碑交付。Docker 一键部署 + Playwright E2E + CI 流水线已落地；后端测试 183 passed + 1 skipped，前端 TypeScript 类型检查通过。
+**当前阶段**：M0–M7 全部交付，**V2 升级执行计划（P0–P3）已完成**。Docker 一键部署 + Playwright E2E + CI 流水线已落地；后端测试 **267 passed + 1 skipped**，前端 `tsc -b` + `vite build` 通过。
+
+**V2 升级摘要**（详见 [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) 与 [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md)）：
+- **P0 地基修复**：PostgreSQL 行程持久化 + 补齐 4 个 REST 端点；LLM 全异步化（`acall_llm`）；SSE 断线重连不重跑（`plan_id` + `GET /api/plan/{id}/stream`）
+- **P1 对话式**：`POST /api/chat` + Redis 会话 + 槽位确定性后处理；Chat UI（`/` → Chat，`/form` 保留）；`modify_plan` 增量调整
+- **P2 内容质量**：`couple_score` 重写（rating 主导）+ `data/curated_pois.json` 人工精选 + 👍/👎 反馈闭环（**未上 pgvector**）
+- **P3 工程化**：`X-API-Key` 鉴权 + slowapi 限流 + structlog/Prometheus + pydantic-settings 配置分层 + 外部 API 重试与熔断
 
 **下一步行动**：
-1. 项目已全部交付，可进入维护/迭代阶段
-2. 如需扩展：多用户协作编辑、更多目的地、离线缓存等
+1. 唯一跳过项：OpenTelemetry tracing（P3.2.3）——LLM 与 Amap/QWeather 调用暂无 span
+2. 项目已交付，可进入维护/迭代阶段
+3. 如需扩展：多用户协作编辑、更多目的地、离线缓存等
+
+**环境提醒**：`backend/.venv` 需与 `requirements.txt` 保持同步（`pip install -r requirements.txt`）；曾因缺少 V2 新增依赖导致 pytest 直接 16 个 collection error。
 
 ---
 
@@ -16,10 +25,14 @@
 
 | 文件 | 用途 |
 |------|------|
-| [ROADMAP.md](D:/Project/meng-travel-agent/memory/ROADMAP.md) | 实现路线图（8 个里程碑 + 验收标准 + 依赖关系） |
-| [ARCHITECTURE.md](D:/Project/meng-travel-agent/memory/ARCHITECTURE.md) | 系统架构（LangGraph 设计、API 协议、数据流、目录结构） |
-| [PROGRESS.md](D:/Project/meng-travel-agent/memory/PROGRESS.md) | 开发进度（里程碑完成清单） |
-| [PROJECT_STRUCTURE.md](D:/Project/meng-travel-agent/memory/PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
+| [ROADMAP.md](ROADMAP.md) | 实现路线图（8 个里程碑 + 验收标准 + 依赖关系） |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构（LangGraph 设计、API 协议、数据流、目录结构） |
+| [PROGRESS.md](PROGRESS.md) | 开发进度（里程碑 + V2 P0–P3 完成清单） |
+| [GOALS.md](GOALS.md) | 当前迭代目标与验证记录 |
+| [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) | V2 技术债诊断与优先级重排理由 |
+| [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md) | V2 可跟踪执行计划（任务 ID + 状态） |
+| [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI） |
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
 ---
 

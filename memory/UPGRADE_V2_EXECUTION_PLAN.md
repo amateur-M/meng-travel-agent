@@ -146,12 +146,14 @@
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
 | T1.2.1 | `ChatReply` 增加 `modify_patch` 字段（destination/dates/budget/preferences 的 patch） | ✅ | schemas/chat.py |
-| T1.2.2 | `conversation.py` 处理 `modify_plan` intent：解析增量修改 → 合并到既有 plan_request → 重置 ready | ✅ | conversation.py |
-| T1.2.3 | 前端 chatStore 检测 modify 后用 patch 重置 form 并可重新 beginPlanning | ✅ | frontend chatStore.applyPatch |
+| T1.2.2 | `conversation.py` 处理 `modify_plan` intent：解析增量修改 → 合并到既有 plan_request → 重置 ready | ✅ | conversation.py（`postprocess_patch()` + `handle_chat` 合并回槽位，2026-10-16 收口） |
+| T1.2.3 | 前端 chatStore 检测 modify 后用 patch 重置 form 并可重新 beginPlanning | ✅ | frontend chatStore.applyPatch（`send` 检测到 patch 后调用，2026-10-16 收口） |
 
 **验收清单**：
-- [ ] "预算加到8千" 在已有 session 内解析为 budget patch
-- [ ] "再加一天" 解析为 end_date 推移（注意天数边界）
+- [x] "预算加到8千" 在已有 session 内解析为 budget patch — `TestHandleChatModify.test_budget_patch_merged_and_ready_reset`（mock 与 LLM 两条路径均覆盖）
+- [x] "再加一天" 解析为 end_date 推移（注意天数边界）— `2026-09-03` → `2026-09-04`；跨月 `2026-09-30` → `2026-10-01`
+- [x] 修改不触发自动规划：`ready=False`、`plan_request=None`，由 UI 重新武装规划按钮
+- [x] 新增 `tests/test_chat.py` 30 个测试；后端 **267 passed + 1 skipped**，前端 `npm run build` 通过
 
 ### P1.3 M9 对话前端
 
