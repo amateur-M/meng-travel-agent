@@ -194,6 +194,11 @@ python scripts/smoke_e2e.py --base-url http://127.0.0.1:8011
 
 ### 5.2 手工清单（只剩浏览器专属部分）
 
+> **E2E 现在也覆盖"对话页直接生成行程"**（`e2e/full_flow.spec.ts`）。此前 E2E 只走
+> `/form`，而默认入口是 `/` 对话页 —— 于是"对话里创建了行程却没人消费它的 SSE 流、
+> 页面永远卡在加载态"这个缺陷一路漏到了用户手里。该用例在修复前必然超时。
+> 本机未装 Playwright 浏览器，它仍需 CI 或 `npx playwright install --with-deps chromium`。
+
 下列条目**只能**在真实浏览器里确认。标注 `[自动]` 的表示服务端/客户端逻辑已由
 `npm run check:store`、`tests/test_conversation_e2e.py` 或 `smoke_e2e.py` 覆盖，
 手工只需确认浏览器表现与之一致。

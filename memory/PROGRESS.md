@@ -396,14 +396,30 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**422 passed + 1 skipped**（唯一 skip 是需 `QWX_TEST_REAL_API=1`
-  的真实天气测试；无数据库环境下为 420 passed + 3 skipped，两个 PG 往返测试
-  **显式打印原因**后跳过）
+- [x] 后端 `pytest -q`：**463 passed + 1 skipped**（唯一 skip 是需 `QWX_TEST_REAL_API=1`
+  的真实天气测试；无数据库环境下会多 2 个显式打印原因的跳过）
 - [x] **真实 PostgreSQL 往返已通过**（T0.2 闭环）：`test_conversation_store_pg.py`
   覆盖会话/消息/幂等重放/摘要游标/画像/级联删除；本轮新增 `test_storage_pg.py` 覆盖
   plans 往返、upsert 保留 response、反馈聚合与过滤
 - [x] **对运行中服务器 + 真实库的 24 项端到端冒烟全绿**：`backend/scripts/smoke_e2e.py`
   （真实 HTTP、启动 lifespan、SSE 计划管线、会话↔行程关联、级联删除、画像"遗忘"）
+- [x] **修复：生成行程后看不到行程**（用户报告）。对话页自己 POST 创建行程（为了把
+  `session_id` 传过去、好让行程关联回会话），然后跳到 `/loading?plan_id=...`；而 Loading
+  页只在 `status === "idle"` 时才去消费 SSE 流 —— 于是"计划已创建、却没有任何人消费它"，
+  页面永远停在加载态，行程躺在数据库里用户看不到，自然也无从"在当前行程上修改"。
+  修复：新增 `tripStore.resumeExistingPlan(planId)`（已完成则直接读库、否则消费流，
+  并用模块级守卫防止 StrictMode 双调用重复消费），Loading 页按有无 `plan_id` 分流。
+  `/result` 遇到生成中的行程改为转 `/loading?plan_id=` 续跑，而不是静默退回对话页。
+- [x] **规则解析（无 key 路径）补全**：`想去大理玩三天` 以前永远停在"还差出发日期"，
+  因为天数只认阿拉伯数字；目的地还会粘上后缀（`大理玩三天`）。现在中文数字天数、
+  显式日期区间（`9月1日到9月3日`，跨年/已过自动顺延）、中文金额（`五千`/`一万二`）、
+  目的地清洗都能处理。修 `改成三亚` 时顺带发现并修掉一个会**把预算改成 3 元**的误判
+  （中文金额必须带数量级单位）。新增 `tests/test_rule_based_parsing.py`（41 条）
+- [x] **新增 `check:plan`**（`frontend/scripts/check-trip-store.cjs`，24 项）：
+  `check:store` 此前只覆盖 chatStore，正是这个盲区让上面的缺陷溜过去了。
+  现在 npm `check:store` = `check:chat` + `check:plan`
+- [x] **E2E 增加"对话页直接生成行程"用例**：此前 E2E 只走 `/form`，而默认入口是
+  `/` 对话页 —— 该用例在修复前必然超时。本机未装浏览器，需 CI 或装 chromium 才能跑。
 - [x] **测试套件不再写开发库**：新增 autouse 隔离夹具 + `real_database` 标记，
   跑完 `chat_sessions/chat_messages/user_profiles/plans/plan_feedback` 全为 0 行
   —— 此前每跑一次会留下 20+ 条真实记录（`test-session-123`、`sess-modify-*` 等）

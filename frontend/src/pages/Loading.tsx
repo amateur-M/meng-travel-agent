@@ -11,7 +11,7 @@ import {
   RotateCcw,
   Wallet,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { SSEProgress } from "../components/SSEProgress/SSEProgress";
 import { StreamingItinerary } from "../components/StreamingItinerary/StreamingItinerary";
 import { useTripStore } from "../stores/tripStore";
@@ -49,7 +49,10 @@ function TravelIllustration() {
  */
 export function Loading() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const planIdParam = searchParams.get("plan_id");
   const status = useTripStore((state) => state.status);
+  const plan = useTripStore((state) => state.plan);
   const currentStep = useTripStore((state) => state.currentStep);
   const progress = useTripStore((state) => state.progress);
   const error = useTripStore((state) => state.error);
@@ -58,15 +61,38 @@ export function Loading() {
   const weatherSwaps = useTripStore((state) => state.weatherSwaps);
   const coupleMessages = useTripStore((state) => state.coupleMessages);
   const beginPlanning = useTripStore((state) => state.beginPlanning);
+  const resumeExistingPlan = useTripStore((state) => state.resumeExistingPlan);
   const resetPlan = useTripStore((state) => state.resetPlan);
 
   const hasStreamingContent = streamingDays.length > 0;
 
+  // Two different entry points land here:
+  //  - /loading            (the form)          -> nothing exists yet, create it
+  //  - /loading?plan_id=X  (the chat, or a refresh mid-generation)
+  //                                            -> the plan already exists, so it
+  //                                               must be *consumed*, not re-created
+  //
+  // Getting this wrong is what made a chat-generated itinerary unreachable: the
+  // chat had already POSTed the plan, this page saw status != "idle" and skipped
+  // beginPlanning(), so nothing ever read the stream and the page sat here while
+  // the itinerary waited in the database.
   useEffect(() => {
+    if (planIdParam) {
+      const state = useTripStore.getState();
+      if (state.plan) {
+        return; // already loaded; the ready-effect below takes over
+      }
+      if (state.status === "error") {
+        return; // the error UI is showing — do not retry in a loop
+      }
+      void resumeExistingPlan(planIdParam);
+      return;
+    }
+
     if (status === "idle") {
       void beginPlanning();
     }
-  }, [beginPlanning, status]);
+  }, [beginPlanning, plan, planIdParam, resumeExistingPlan, status]);
 
   useEffect(() => {
     if (status === "ready") {

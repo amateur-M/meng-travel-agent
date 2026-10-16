@@ -31,7 +31,11 @@ export function PlanResult() {
       setLoading(true);
       loadPlan(planIdParam).then((ok) => {
         if (!ok) {
-          navigate("/", { replace: true });
+          // Not finished yet (or the id is gone). Send it to /loading, which
+          // resumes an in-flight plan and comes back here when it is ready —
+          // and shows an explanatory error for an id that no longer exists,
+          // which is better than silently dropping the user on the chat page.
+          navigate(`/loading?plan_id=${planIdParam}`, { replace: true });
         }
         setLoading(false);
       });

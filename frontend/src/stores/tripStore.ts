@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { fetchPlan, startPlan, resumeStream } from "../services/plan";
+import type { PlanStreamOptions } from "../services/plan";
 import type {
   Activity,
   BudgetAlertEvent,
@@ -73,6 +74,75 @@ export interface StreamingDay {
   activities: Activity[];
 }
 
+/**
+ * Which plan's SSE stream is currently being consumed.
+ *
+ * React StrictMode double-invokes mount effects in development, and the Loading
+ * page's effect re-runs whenever the store status changes. Without this guard
+ * the same stream would be opened twice, duplicating streaming events and
+ * opening a second connection to the backend.
+ */
+let streamingPlanId: string | null = null;
+
+type SetState = (
+  partial: Partial<TripStore> | ((state: TripStore) => Partial<TripStore>),
+) => void;
+
+/** Streaming event handlers, shared by the create path and the resume path. */
+function streamHandlers(set: SetState): PlanStreamOptions {
+  return {
+    onStep: (event) => {
+      set({
+        currentStep: event.message || "正在规划行程",
+        progress: progressForPhase(event.phase),
+      });
+    },
+    onPartial: (payload: PartialEvent) => {
+      set((state) => {
+        const existing = state.streamingDays.find(
+          (d) => d.day_index === payload.day_index,
+        );
+        if (existing) {
+          return {};
+        }
+        return {
+          streamingDays: [
+            ...state.streamingDays,
+            {
+              day_index: payload.day_index,
+              weather: payload.weather,
+              activities: payload.activities,
+            },
+          ],
+        };
+      });
+    },
+    onBudgetAlert: (payload: BudgetAlertEvent) => {
+      set({ budgetAlert: payload });
+    },
+    onWeatherSwap: (payload: WeatherSwapEvent) => {
+      set((state) => ({
+        weatherSwaps: [...state.weatherSwaps, payload],
+      }));
+    },
+    onMessage: (payload: MessageEvent) => {
+      set((state) => ({
+        coupleMessages: [...state.coupleMessages, payload],
+      }));
+    },
+  };
+}
+
+function plannedState(plan: TripPlanResponse) {
+  return {
+    plan,
+    planId: plan.plan_id,
+    status: "ready" as PlanStatus,
+    currentStep: "行程已就绪",
+    progress: PLANNING_STEPS.map((step) => ({ ...step, status: "done" as const })),
+  };
+}
+
 interface TripStore {
   form: TripPlanRequest;
   plan: TripPlanResponse | null;
@@ -87,6 +157,7 @@ interface TripStore {
   coupleMessages: MessageEvent[];
   updateForm: (patch: Partial<TripPlanRequest>) => void;
   beginPlanning: () => Promise<void>;
+  resumeExistingPlan: (planId: string) => Promise<void>;
   loadPlan: (planId: string) => Promise<boolean>;
   resetPlan: () => void;
 }
@@ -152,55 +223,10 @@ export const useTripStore = create<TripStore>((set, get) => ({
       const { plan_id } = await startPlan(request);
       set({ planId: plan_id });
 
-      const plan = await resumeStream(plan_id, request, {
-        onStep: (event) => {
-          set({
-            currentStep: event.message || "正在规划行程",
-            progress: progressForPhase(event.phase),
-          });
-        },
-        onPartial: (payload: PartialEvent) => {
-          set((state) => {
-            const existing = state.streamingDays.find(
-              (d) => d.day_index === payload.day_index,
-            );
-            if (existing) {
-              return {};
-            }
-            return {
-              streamingDays: [
-                ...state.streamingDays,
-                {
-                  day_index: payload.day_index,
-                  weather: payload.weather,
-                  activities: payload.activities,
-                },
-              ],
-            };
-          });
-        },
-        onBudgetAlert: (payload: BudgetAlertEvent) => {
-          set({ budgetAlert: payload });
-        },
-        onWeatherSwap: (payload: WeatherSwapEvent) => {
-          set((state) => ({
-            weatherSwaps: [...state.weatherSwaps, payload],
-          }));
-        },
-        onMessage: (payload: MessageEvent) => {
-          set((state) => ({
-            coupleMessages: [...state.coupleMessages, payload],
-          }));
-        },
-      });
+      streamingPlanId = plan_id;
+      const plan = await resumeStream(plan_id, request, streamHandlers(set));
 
-      set({
-        plan,
-        planId: plan.plan_id,
-        status: "ready",
-        currentStep: "行程已就绪",
-        progress: PLANNING_STEPS.map((step) => ({ ...step, status: "done" })),
-      });
+      set(plannedState(plan));
     } catch (error) {
       set({
         status: "error",
@@ -209,6 +235,68 @@ export const useTripStore = create<TripStore>((set, get) => ({
         progress: freshSteps(),
       });
       throw error;
+    } finally {
+      streamingPlanId = null;
+    }
+  },
+
+  /**
+   * Consume an itinerary that already exists for *planId* instead of creating a
+   * new one.
+   *
+   * Two flows depend on this and both were broken:
+   *  - the chat page creates the plan itself (it needs to pass session_id so the
+   *    finished trip is linked back to the conversation) and then lands on
+   *    /loading?plan_id=... — nothing consumed that stream, so the page never
+   *    advanced to the result and the itinerary was unreachable;
+   *  - refreshing /loading?plan_id=... mid-generation used to silently create a
+   *    *second*, unlinked plan rather than resuming the one in flight.
+   */
+  resumeExistingPlan: async (planId: string) => {
+    if (streamingPlanId === planId) {
+      return;
+    }
+    if (get().planId === planId && get().plan) {
+      return;
+    }
+
+    const request = get().form;
+
+    set({
+      status: "planning",
+      planId,
+      plan: null,
+      error: null,
+      currentStep: "正在恢复行程进度",
+      progress: progressForPhase("parse_input"),
+      streamingDays: [],
+      budgetAlert: null,
+      weatherSwaps: [],
+      coupleMessages: [],
+    });
+
+    streamingPlanId = planId;
+    try {
+      // Already finished (e.g. a refresh after completion): read it straight
+      // from PostgreSQL rather than re-opening a stream for it.
+      const finished = await fetchPlan(planId);
+      if (finished) {
+        set(plannedState(finished));
+        return;
+      }
+
+      const plan = await resumeStream(planId, request, streamHandlers(set));
+      set(plannedState(plan));
+    } catch (error) {
+      set({
+        status: "error",
+        error: error instanceof Error ? error.message : "行程恢复失败，请稍后重试",
+        currentStep: "规划失败",
+        progress: freshSteps(),
+      });
+      throw error;
+    } finally {
+      streamingPlanId = null;
     }
   },
 

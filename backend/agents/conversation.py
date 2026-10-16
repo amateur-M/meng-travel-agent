@@ -110,7 +110,11 @@ def postprocess_slots(raw_slots: dict, existing_slots: dict) -> dict:
 
 
 def _normalise_budget(val: Any) -> float:
-    """Convert budget expressions to a float."""
+    """Convert budget expressions to a float.
+
+    Understands Arabic and Chinese numerals with a unit: ``"5千"`` → 5000,
+    ``"1.5万"`` → 15000, ``"五千"`` → 5000, ``"一万二"`` → 12000.
+    """
     if isinstance(val, (int, float)):
         return float(val)
     text = str(val).strip()
@@ -125,6 +129,22 @@ def _normalise_budget(val: Any) -> float:
     match = re.match(r"^[\d.]+$", text)
     if match:
         return float(text)
+
+    # Chinese numerals: "五千" / "一万" / "一万二" / "三百"
+    cn = re.match(r"^([一二两三四五六七八九十]+)\s*([千万百])?\s*([一二两三四五六七八九])?$", text)
+    if cn:
+        base = _cn_to_int(cn.group(1))
+        if base is not None:
+            unit = cn.group(2)
+            tail = _cn_to_int(cn.group(3)) if cn.group(3) else 0
+            if unit == "万":
+                # "一万二" means 12000, i.e. the tail is a fraction of the unit
+                return float(base * 10000 + (tail or 0) * 1000)
+            if unit == "千":
+                return float(base * 1000 + (tail or 0) * 100)
+            if unit == "百":
+                return float(base * 100 + (tail or 0) * 10)
+            return float(base)
     return 0.0
 
 
@@ -158,9 +178,11 @@ def _normalise_date(val: Any, existing: dict, is_start: bool) -> str:
         return (today + timedelta(days=days_ahead)).isoformat()
 
     # "三天" → start today + 2 days end
-    day_match = re.search(r"(\d+)\s*天", text)
+    day_match = _DAY_COUNT_RE.search(text)
     if day_match:
-        num_days = int(day_match.group(1))
+        num_days = _cn_to_int(day_match.group(1))
+        if not num_days:
+            return text
         if is_start:
             return today.isoformat()
         else:
@@ -193,6 +215,73 @@ _DAY_SHIFT_RE = re.compile(
     r"(?:再|多|加|增加|延长|续|推后|延后|往后推|提前)\s*"
     r"([0-9]+|[一二两三四五六七八九十]+)\s*天"
 )
+
+# A budget amount, written with Arabic or Chinese numerals: "5000", "5千",
+# "1.5万", "五千", "一万", "一万二", "八千". Shared by the fresh-request path and
+# the incremental-modify path so both understand the same phrasings.
+#
+# The Chinese branch requires a magnitude unit on purpose: without it "改成三亚"
+# parses 三 as a budget of 3 yuan, silently overwriting the user's real budget
+# with nonsense whenever a destination happens to contain a numeral.
+_BUDGET_AMOUNT = (
+    r"(?:[0-9][0-9.,]*\s*[万千]?"
+    r"|[一二两三四五六七八九十]+\s*[千万百][一二两三四五六七八九]?)"
+)
+
+# A trip length as users actually write it: "3天" but also "三天" / "七天".
+# Matching only \d+ left "想去大理玩三天" stuck at "还差出发日期、返程日期" forever,
+# so the chat could never reach the point of offering to plan.
+_DAY_COUNT_RE = re.compile(r"([0-9]+|[一二两三四五六七八九十]+)\s*天")
+
+# Explicit dates: "2026-09-01 到 2026-09-03" or "9月1日到9月3日".
+_ISO_DATE_RE = re.compile(r"(\d{4})-(\d{1,2})-(\d{1,2})")
+_CN_DATE_RE = re.compile(r"(\d{1,2})\s*月\s*(\d{1,2})\s*[日号]")
+
+# Trailing filler a destination capture drags along. Applied in two passes
+# because the duration and the verb sit next to each other: "大理玩三天" -> the
+# duration goes first ("大理玩"), then the verb ("大理").
+_DEST_TRAILING_VERB_RE = re.compile(r"(?:玩|呆|待|住|游|耍|旅行|旅游|逛逛|看看|溜达)+$")
+
+
+def _clean_destination(raw: str) -> str:
+    """Strip the duration/verb tail a greedy destination match picked up.
+
+    ``"大理玩三天"`` → ``"大理"``. Without this the itinerary, the plan title and
+    the L2 profile all inherit the noise.
+    """
+    cleaned = _DAY_COUNT_RE.sub("", raw).strip()
+    cleaned = _DEST_TRAILING_VERB_RE.sub("", cleaned).strip()
+    return cleaned or raw
+
+
+def _extract_date_range(message: str) -> tuple[str, str] | None:
+    """Read an explicit start/end pair out of *message*, if one is present.
+
+    Handles ``2026-09-01 到 2026-09-03`` and ``9月1日到9月3日``. A bare month/day
+    pair takes the current year, rolling to next year when it is already past,
+    which is what "9月1日" means in practice for a trip planner.
+    """
+    iso = _ISO_DATE_RE.findall(message)
+    if len(iso) >= 2:
+        return f"{iso[0][0]}-{int(iso[0][1]):02d}-{int(iso[0][2]):02d}", f"{iso[1][0]}-{int(iso[1][1]):02d}-{int(iso[1][2]):02d}"
+
+    cn = _CN_DATE_RE.findall(message)
+    if len(cn) >= 2:
+        today = date.today()
+        year = today.year
+        try:
+            first = date(year, int(cn[0][0]), int(cn[0][1]))
+            second = date(year, int(cn[1][0]), int(cn[1][1]))
+            if second < first:  # crosses new year, e.g. 12月28日到1月3日
+                second = second.replace(year=year + 1)
+            if second < today:  # the whole range is in the past -> next year
+                first = first.replace(year=year + 1)
+                second = second.replace(year=year + 1)
+            return first.isoformat(), second.isoformat()
+        except ValueError:
+            return None
+
+    return None
 
 
 def _cn_to_int(text: str) -> int | None:
@@ -316,9 +405,11 @@ def _looks_like_modification(msg: str) -> bool:
     """True when *msg* asks to change an existing plan rather than start one."""
     if any(signal in msg for signal in _MODIFY_SIGNALS):
         return True
-    # A bare budget restatement ("预算5000") only makes sense on an existing
-    # plan; "想去三亚，预算8000元" is a fresh request and must keep planning.
-    if "预算" in msg and re.search(r"[0-9]", msg):
+    # A bare budget restatement ("预算5000" / "预算五千") only makes sense on an
+    # existing plan; "想去三亚，预算8000元" is a fresh request and must keep planning.
+    # The Chinese branch requires an actual magnitude unit so that an incidental
+    # "一" (as in "一起") is not mistaken for an amount.
+    if "预算" in msg and re.search(r"[0-9]|[一二两三四五六七八九十]+\s*[千万百]", msg):
         return not _PLANNING_VERBS_RE.search(msg)
     return False
 
@@ -328,11 +419,11 @@ def _extract_modify_patch(message: str, existing_slots: dict) -> dict:
     msg = message.strip()
     raw: dict = {}
 
-    # Budget — "预算加到8千" / "改成8000元" / "5000块"
+    # Budget — "预算加到8千" / "改成8000元" / "5000块" / "预算加到八千"
     budget_match = (
-        re.search(r"预算[^0-9]{0,6}?([0-9][0-9.,]*\s*[万千]?)", msg)
-        or re.search(r"(?:加到|改成|提到|增加到|调整为|变成)\s*([0-9][0-9.,]*\s*[万千]?)", msg)
-        or re.search(r"([0-9][0-9.,]*\s*[万千]?)\s*[元块]", msg)
+        re.search(rf"预算[^0-9]{{0,6}}?({_BUDGET_AMOUNT})", msg)
+        or re.search(rf"(?:加到|改成|提到|增加到|调整为|变成)\s*({_BUDGET_AMOUNT})", msg)
+        or re.search(rf"({_BUDGET_AMOUNT})\s*[元块]", msg)
     )
     if budget_match:
         raw["budget"] = budget_match.group(1)
@@ -446,7 +537,7 @@ def _mock_handle(message: str, existing_slots: dict) -> dict:
     new_slots = dict(existing_slots)
     dest_match = re.search(r"(想去|去|到|飞)\s*([^\s，。,]+)", msg)
     if dest_match:
-        new_slots["destination"] = dest_match.group(2)
+        new_slots["destination"] = _clean_destination(dest_match.group(2))
 
     # Extract origin — "从上海出发" / "从北京去大理". Feeds both the slots and the
     # durable L2 profile, so the rule-based path needs it too.
@@ -455,7 +546,9 @@ def _mock_handle(message: str, existing_slots: dict) -> dict:
         new_slots["origin"] = origin_match.group(1)
 
     # Extract budget
-    budget_match = re.search(r"(\d[\d.]*万?千?)\s*[元块]", msg) or re.search(r"预算\s*(\d[\d.]*万?千?)", msg)
+    budget_match = re.search(rf"({_BUDGET_AMOUNT})\s*[元块]", msg) or re.search(
+        rf"预算\s*({_BUDGET_AMOUNT})", msg
+    )
     if budget_match:
         new_slots["budget"] = _normalise_budget(budget_match.group(1))
 
@@ -464,11 +557,16 @@ def _mock_handle(message: str, existing_slots: dict) -> dict:
         d = _normalise_date("下周末", {}, True)
         new_slots["start_date"] = d
         new_slots["end_date"] = (date.fromisoformat(d) + timedelta(days=1)).isoformat()
-    day_match = re.search(r"(\d+)\s*天", msg)
-    if day_match:
-        num = int(day_match.group(1))
-        new_slots["start_date"] = date.today().isoformat()
-        new_slots["end_date"] = (date.today() + timedelta(days=num - 1)).isoformat()
+    explicit = _extract_date_range(msg)
+    if explicit:
+        new_slots["start_date"], new_slots["end_date"] = explicit
+    else:
+        day_match = _DAY_COUNT_RE.search(msg)
+        if day_match:
+            num = _cn_to_int(day_match.group(1))
+            if num:
+                new_slots["start_date"] = date.today().isoformat()
+                new_slots["end_date"] = (date.today() + timedelta(days=num - 1)).isoformat()
 
     ready = _check_ready(new_slots)
     if ready:

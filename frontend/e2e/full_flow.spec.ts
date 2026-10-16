@@ -27,6 +27,30 @@ test.describe("对话页（默认入口）", () => {
     await page.goto("/");
     await expect(page.getByPlaceholder("说说你们的旅行想法")).toBeVisible();
   });
+
+  /**
+   * 回归守卫：对话页自己 POST 创建行程（只为把 session_id 一并传过去，好让生成的
+   * 行程关联回会话），然后跳到 /loading?plan_id=...。而 Loading 页过去只在
+   * status === "idle" 时才去消费 SSE 流 —— 于是"计划已创建，却没有任何人消费它"，
+   * 页面永远停在加载态，数据库里躺着一条用户看不到的行程。
+   *
+   * 这条用例是 e2e 里唯一走"对话 → 生成"路径的，(修复前) 它会一直等到超时。
+   */
+  test("对话里说清需求后能生成行程并看到结果页", async ({ page }) => {
+    await page.goto("/");
+
+    // 规则解析（CI 无 API key）也能理解中文数字："三天" + "预算5000元"
+    await page.getByPlaceholder("说说你们的旅行想法").fill("想去大理玩三天，预算5000元");
+    await page.keyboard.press("Enter");
+
+    const launch = page.getByRole("button", { name: "开始规划行程" });
+    await expect(launch).toBeVisible({ timeout: 30_000 });
+    await launch.click();
+
+    // 关键断言：必须真正走到结果页，而不是停在 /loading
+    await expect(page).toHaveURL(/\/result/, { timeout: 60_000 });
+    await expect(page.getByText("天行程").first()).toBeVisible();
+  });
 });
 
 test.describe("表单页", () => {
