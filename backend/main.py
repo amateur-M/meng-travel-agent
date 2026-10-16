@@ -16,12 +16,16 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from schemas import TripPlanRequest, TripPlanResponse
-from schemas.chat import ChatRequest, ChatReply
+from schemas.chat import (
+    ChatRequest,
+    ChatReply,
+    RenameSessionRequest,
+)
 from agents.state import AgentState
 from agents.graph import graph
 from agents.conversation import handle_chat
 from services.storage import plan_store, generate_plan_id
-from services.session_store import session_store
+from services.conversation_store import conversation_store
 from deps import verify_api_key
 from config.settings import settings
 from logging_config import configure_logging
@@ -44,20 +48,20 @@ async def _report_storage_status() -> None:
     """Log the real connectivity of every storage backend, once, at startup."""
     pg = await asyncio.to_thread(plan_store.health)
     if pg["connected"]:
-        logger.info("storage: postgres connected")
+        logger.info("storage: postgres connected (plans)")
     else:
         logger.error(
             "storage: postgres UNAVAILABLE — plan persistence is DISABLED (reason: %s)",
             pg["error"],
         )
 
-    redis_status = await session_store.health()
-    if redis_status["connected"]:
-        logger.info("storage: redis connected")
+    chat = await conversation_store.health()
+    if chat["connected"]:
+        logger.info("storage: postgres connected (chat history)")
     else:
         logger.error(
-            "storage: redis UNAVAILABLE — chat sessions will NOT persist (reason: %s)",
-            redis_status["error"],
+            "storage: chat history will NOT persist (reason: %s)",
+            chat["error"],
         )
 
 
@@ -105,14 +109,14 @@ async def health_check():
     becomes ``degraded`` as soon as a backend is unreachable.
     """
     postgres = await asyncio.to_thread(plan_store.health)
-    redis = await session_store.health()
-    degraded = not postgres["connected"] or not redis["connected"]
+    chat = await conversation_store.health()
+    degraded = not postgres["connected"] or not chat["connected"]
     return {
         "status": "degraded" if degraded else "ok",
         "service": "coupletrip",
         "storage": {
             "postgres": postgres,
-            "redis": redis,
+            "chat": chat,
         },
     }
 
@@ -127,9 +131,100 @@ async def chat(request: Request, body: ChatRequest, _: None = Depends(verify_api
     Returns a ChatReply with the assistant's text, identified intent,
     merged slots, and — when slots are complete — a plan_request that
     can be fed directly to POST /api/plan.
+
+    The turn is persisted before the model is called and the reply after, so
+    a browser that dies mid-request keeps the user's message (recovery #5),
+    and a replayed ``message_id`` cannot duplicate it (recovery #6).
     """
-    reply = await handle_chat(body.message, body.session_id)
+    reply = await handle_chat(
+        body.message,
+        body.session_id,
+        client_id=body.client_id,
+        message_id=body.message_id,
+    )
     return reply
+
+
+# ── Chat session management (V3/P1) ──────────────────────────────
+
+@app.get("/api/chat/sessions")
+async def list_chat_sessions(
+    client_id: Optional[str] = Query(default=None, description="按浏览器客户端过滤"),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=20, ge=1, le=100),
+    _: None = Depends(verify_api_key),
+):
+    """List conversations, most recently active first (drives the sidebar)."""
+    offset = (page - 1) * size
+    items = await conversation_store.list_sessions(
+        client_id=client_id, limit=size, offset=offset
+    )
+    return {"page": page, "size": size, "items": items}
+
+
+@app.get("/api/chat/sessions/{session_id}")
+async def get_chat_session(
+    session_id: str,
+    _: None = Depends(verify_api_key),
+):
+    """Session metadata — used to hydrate the UI after a refresh."""
+    session = await conversation_store.get_session(session_id)
+    if session is None:
+        return JSONResponse(status_code=404, content={"detail": "Session not found"})
+    return session
+
+
+@app.get("/api/chat/sessions/{session_id}/messages")
+async def get_chat_messages(
+    session_id: str,
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=200, ge=1, le=500),
+    _: None = Depends(verify_api_key),
+):
+    """Full transcript in chronological order.
+
+    ``total`` lets the client tell "no messages yet" apart from "session does
+    not exist", which the hydrate path needs to decide whether to start a new
+    conversation (recovery #4).
+    """
+    items = await conversation_store.get_messages(
+        session_id, limit=size, offset=(page - 1) * size
+    )
+    session = await conversation_store.get_session(session_id)
+    if session is None and not items:
+        return JSONResponse(status_code=404, content={"detail": "Session not found"})
+    return {
+        "session_id": session_id,
+        "page": page,
+        "size": size,
+        "total": (session or {}).get("message_count", len(items)),
+        "items": items,
+    }
+
+
+@app.patch("/api/chat/sessions/{session_id}")
+async def rename_chat_session(
+    session_id: str,
+    body: RenameSessionRequest,
+    _: None = Depends(verify_api_key),
+):
+    """Rename a conversation."""
+    renamed = await conversation_store.rename_session(session_id, body.title.strip())
+    if not renamed:
+        return JSONResponse(status_code=404, content={"detail": "Session not found"})
+    return {"session_id": session_id, "title": body.title.strip()}
+
+
+@app.delete("/api/chat/sessions/{session_id}")
+async def delete_chat_session(
+    session_id: str,
+    _: None = Depends(verify_api_key),
+):
+    """Delete a conversation and its transcript (ON DELETE CASCADE)."""
+    deleted = await conversation_store.delete_session(session_id)
+    if not deleted:
+        return JSONResponse(status_code=404, content={"detail": "Session not found"})
+    return {"session_id": session_id, "deleted": True}
 
 
 # ── SSE event helpers ───────────────────────────────────────────

@@ -9,6 +9,14 @@ class ChatRequest(BaseModel):
 
     message: str = Field(..., description="用户消息")
     session_id: Optional[str] = Field(None, description="会话 ID，首次可不传")
+    client_id: Optional[str] = Field(
+        None,
+        description="浏览器侧稳定 id（localStorage），用于按客户端隔离会话与画像",
+    )
+    message_id: Optional[str] = Field(
+        None,
+        description="客户端生成的轮次 id；同 id 重试不会重复写入（幂等）",
+    )
 
 
 class Slots(BaseModel):
@@ -54,3 +62,60 @@ class ChatReply(BaseModel):
         None,
         description="当 intent=modify_plan 时，包含增量修改 patch (P1.2)",
     )
+
+
+class SessionSummary(BaseModel):
+    """One row of the conversation list (V3/P1)."""
+
+    session_id: str
+    title: Optional[str] = None
+    updated_at: Optional[str] = None
+    last_plan_id: Optional[str] = None
+    message_count: int = 0
+    preview: str = ""
+
+
+class SessionListResponse(BaseModel):
+    """Paginated conversation list."""
+
+    page: int
+    size: int
+    items: List[SessionSummary]
+
+
+class SessionDetail(BaseModel):
+    """Session metadata for hydrate-on-refresh (V3/P1)."""
+
+    session_id: str
+    title: Optional[str] = None
+    summary: Optional[str] = None
+    slots: Slots = Field(default_factory=Slots)
+    plan_request: Optional[dict] = None
+    last_plan_id: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    message_count: int = 0
+
+
+class ChatMessageItem(BaseModel):
+    """One stored turn."""
+
+    role: str
+    content: str
+    created_at: Optional[str] = None
+
+
+class MessageListResponse(BaseModel):
+    """Transcript page, chronological."""
+
+    session_id: str
+    page: int
+    size: int
+    total: int
+    items: List[ChatMessageItem]
+
+
+class RenameSessionRequest(BaseModel):
+    """Body for PATCH /api/chat/sessions/{id}."""
+
+    title: str = Field(..., min_length=1, max_length=60, description="新的会话标题")

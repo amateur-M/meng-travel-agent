@@ -1,24 +1,45 @@
 """Conversation handler — dialog intent classification + slot extraction (P1.1).
 
-Uses a single acall_llm call for intent + slot extraction, then applies
-deterministic postprocessing (date parsing, budget normalisation) before
-merging slots into Redis session storage.
+Two LLM calls at most, on purpose:
 
-When no LLM key is configured, falls back to a rule-based mock that
-handles simple greetings and keyword-based slot extraction.
+  1. **Always** — intent + slot extraction, as structured JSON, carrying the
+     recent transcript (L0 memory) so multi-turn references resolve.
+  2. **Only for conversational intents** (``question`` / ``greeting``) — a
+     free-form answer via :func:`acall_llm_text`.  Forcing these through the
+     JSON contract is exactly why the agent used to reply "好问题～不过我更擅长
+     帮你规划行程" instead of answering.  Planning intents instead reuse a
+     deterministic confirmation (more reliable *and* cheaper than an extra
+     generation).
+
+Sessions, slots and the transcript live in PostgreSQL (V3/P1) rather than a
+30-minute Redis TTL, so a conversation survives refreshes, restarts and days.
+When no LLM key is configured, :func:`_mock_handle` keeps everything working
+with rule-based fallbacks.
 """
 
 import re
 import logging
-import uuid
 from datetime import date, timedelta
 from typing import Any
 
-from services.llm import acall_llm
-from services.session_store import session_store
+from services.llm import acall_llm, acall_llm_text
+from services.conversation_store import conversation_store, generate_session_id
 from schemas.chat import ChatReply, Slots, ModifyPatch
 
 logger = logging.getLogger("coupletrip")
+
+# ── Memory window (L0) ───────────────────────────────────────────────
+
+# Turns of real transcript handed to the LLM. Older turns are represented by
+# the rolling summary (L1) instead of being replayed verbatim.
+HISTORY_TURNS = 10
+
+# Intents whose reply must be genuinely generated rather than templated.
+CONVERSATIONAL_INTENTS = ("question", "greeting")
+
+# Session titles come from the first substantive user message.
+TITLE_MAX_CHARS = 20
+_UNTITLED_INTENTS = ("greeting", "question")
 
 # ── Required slots for planning_ready ────────────────────────────────
 
@@ -26,17 +47,31 @@ REQUIRED_SLOTS = ("destination", "start_date", "end_date", "budget")
 
 # ── Prompt loading ───────────────────────────────────────────────────
 
-def _load_prompt() -> str:
-    """Load the chat intent prompt template."""
+def _read_prompt(path: str, fallback: str) -> str:
     try:
-        with open("prompts/chat_intent_prompt.md", "r", encoding="utf-8") as f:
+        with open(path, "r", encoding="utf-8") as f:
             return f.read()
     except Exception:
+        return fallback
+
+
+def _load_prompt() -> str:
+    """Load the chat intent prompt template."""
+    return _read_prompt(
+        "prompts/chat_intent_prompt.md",
         # Fallback: inline minimal prompt
-        return (
-            "你是情侣旅行规划助手。判断用户意图（greeting/question/planning_intent/"
-            "planning_ready/modify_plan）并提取槽位。返回JSON。"
-        )
+        "你是情侣旅行规划助手。判断用户意图（greeting/question/planning_intent/"
+        "planning_ready/modify_plan）并提取槽位。返回JSON。",
+    )
+
+
+def _load_reply_prompt() -> str:
+    """Load the free-form reply prompt (used for question / greeting)."""
+    return _read_prompt(
+        "prompts/chat_reply_prompt.md",
+        "你是情侣旅行助手。用中文简洁温暖地回答用户，120字以内，不要输出JSON。"
+        "结合历史对话，不要复述用户的话，不要编造具体票价与营业时间。",
+    )
 
 
 # ── Slot postprocessing ─────────────────────────────────────────────
@@ -450,32 +485,85 @@ def _mock_handle(message: str, existing_slots: dict) -> dict:
 
 # ── Main handler ─────────────────────────────────────────────────────
 
-async def handle_chat(message: str, session_id: str | None) -> ChatReply:
+def _make_title(message: str) -> str:
+    """Derive a session title from the first substantive user message."""
+    cleaned = re.sub(r"\s+", " ", message).strip()
+    return cleaned[:TITLE_MAX_CHARS] or "新对话"
+
+
+def _planning_reply(intent: str, slots: dict) -> str:
+    """Deterministic confirmation for planning intents.
+
+    Planning replies restate known facts (what changed, what is still
+    missing), so a template is both more reliable and cheaper than an extra
+    generation. Only used when the model returned no reply text at all.
+    """
+    if intent == "planning_ready":
+        return f"好的，{slots.get('destination', '目的地')}的行程马上为你安排～"
+    if intent == "modify_plan":
+        return "好的，已经按你说的调整了。要现在重新规划吗？"
+    missing = [k for k in REQUIRED_SLOTS if not slots.get(k)]
+    hint_map = {
+        "destination": "目的地",
+        "start_date": "出发日期",
+        "end_date": "返程日期",
+        "budget": "预算",
+    }
+    hints = "、".join(hint_map.get(k, k) for k in missing)
+    if not hints:
+        return "好呀，那我们接着聊～"
+    return f"记下了～还差{hints}，一起补全吧？"
+
+
+async def handle_chat(
+    message: str,
+    session_id: str | None = None,
+    client_id: str | None = None,
+    message_id: str | None = None,
+) -> ChatReply:
     """Process a chat message and return a structured reply.
 
     Args:
-        message: User's input text.
-        session_id: Existing session ID, or None for new sessions.
+        message:    User's input text.
+        session_id: Existing session ID, or None for a new session.
+        client_id:  Stable per-browser id, used to scope sessions (L2 profiles
+                    hang off the same key).
+        message_id: Client-generated turn id; makes the append idempotent so a
+                    retried request cannot duplicate the user's message.
 
     Returns:
         ChatReply with intent, reply text, merged slots, and optional plan_request.
     """
-    # Generate session_id if not provided
-    sid = session_id or uuid.uuid4().hex
+    sid = session_id or generate_session_id()
 
-    # Load existing slots from Redis
-    existing_slots = await session_store.get_slots(sid)
+    # Make sure the session row exists before anything references it, so a
+    # session_id from a stale local pointer self-heals instead of failing the
+    # foreign key on the first message.
+    await conversation_store.ensure_session(sid, client_id)
 
-    # Call LLM for intent + slot extraction
-    system_prompt = _load_prompt()
+    session = await conversation_store.get_session(sid)
+    existing_slots = (session or {}).get("slots") or {}
+
+    # L0 memory: the transcript *before* this turn. Loaded before the append
+    # below so the current message is not duplicated in the prompt.
+    history = await conversation_store.get_recent_messages(sid, limit=HISTORY_TURNS)
+
+    # Persist the user turn before calling the LLM (recovery matrix #5): if the
+    # browser dies mid-request, their message is not lost.
+    await conversation_store.append_message(
+        sid, "user", message, message_id=message_id or generate_session_id()
+    )
+
+    # ── Call 1: intent + slots, with memory ──────────────────────────
     user_prompt = f"已有槽位: {existing_slots}\n用户消息: {message}"
 
     result = None
     try:
         result = await acall_llm(
-            system_prompt=system_prompt,
+            system_prompt=_load_prompt(),
             user_prompt=user_prompt,
             mock_response=None,  # signal: use _mock_handle instead
+            history=history,
         )
     except Exception as exc:
         # acall_llm re-raises when mock_response is None; degrade to the
@@ -483,19 +571,18 @@ async def handle_chat(message: str, session_id: str | None) -> ChatReply:
         logger.warning("Chat LLM call failed, falling back to mock: %s", exc)
 
     if result is None or "error" in result:
-        # Mock fallback
         mock_result = _mock_handle(message, existing_slots)
         raw_slots = mock_result["slots"]
         intent = mock_result["intent"]
-        reply = mock_result["reply"]
+        fallback_reply = mock_result["reply"]
         raw_modify_patch = mock_result.get("modify_patch")
     else:
         raw_slots = result.get("slots", {})
         intent = result.get("intent", "planning_intent")
-        reply = result.get("reply", "让我想想...")
+        fallback_reply = result.get("reply") or ""
         raw_modify_patch = result.get("modify_patch")
 
-    # Postprocess slots, then fold the modify patch on top (P1.2)
+    # ── Slots: postprocess, then fold the modify patch on top (P1.2) ──
     processed_slots = postprocess_slots(raw_slots, existing_slots)
 
     modify_patch = None
@@ -505,17 +592,40 @@ async def handle_chat(message: str, session_id: str | None) -> ChatReply:
             processed_slots = {**processed_slots, **patch_values}
             modify_patch = ModifyPatch(**patch_values)
 
-    # Merge into Redis session
-    await session_store.merge_slots(sid, processed_slots)
-    await session_store.add_message(sid, "user", message)
-    await session_store.add_message(sid, "assistant", reply)
+    await conversation_store.update_slots(sid, processed_slots)
 
-    # A modification never auto-plans: ready is reset so the user confirms
-    # the new request explicitly (the frontend re-arms its plan button).
+    # Title the session from the first substantive message (a greeting or a
+    # one-off question is not a useful label for the conversation list).
+    if intent not in _UNTITLED_INTENTS:
+        await conversation_store.set_title_if_empty(sid, _make_title(message))
+
+    # A modification never auto-plans: ready is reset so the user confirms the
+    # new request explicitly (the frontend re-arms its plan button).
     ready = _check_ready(processed_slots) and intent in ("planning_ready", "planning_intent")
-
-    # Build plan_request if ready
     plan_request = _build_plan_request(processed_slots) if ready else None
+    if plan_request is not None:
+        await conversation_store.set_plan_request(sid, plan_request)
+
+    # ── Reply ────────────────────────────────────────────────────────
+    reply = fallback_reply
+    if intent in CONVERSATIONAL_INTENTS:
+        # Call 2: a real answer instead of a deflection. Returns "" when no
+        # API key is configured, in which case the rule-based reply stands.
+        try:
+            generated = await acall_llm_text(
+                system_prompt=_load_reply_prompt(),
+                user_prompt=message,
+                history=history,
+            )
+        except Exception as exc:
+            logger.warning("Chat reply generation failed, using fallback: %s", exc)
+            generated = ""
+
+        reply = generated or fallback_reply or _planning_reply(intent, processed_slots)
+    elif not reply:
+        reply = _planning_reply(intent, processed_slots)
+
+    await conversation_store.append_message(sid, "assistant", reply)
 
     return ChatReply(
         session_id=sid,

@@ -1,8 +1,8 @@
 """Tests for T0.4: storage state is visible instead of silently degraded.
 
-The V2 persistence layer used to swallow failures (every PlanStore call
-returned None/False/[]) with only a warning log, so a broken local database
-was indistinguishable from "nothing saved yet".  These tests pin the new
+The V2 persistence layer used to swallow failures (every store call returned
+None/False/[]) with only a warning log, so a broken local database was
+indistinguishable from "nothing saved yet".  These tests pin the new
 behaviour: ``/health`` reports the real state and the reason.
 """
 
@@ -10,8 +10,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from main import app, _report_storage_status
-from services.session_store import session_store
+from services.conversation_store import conversation_store
 from services.storage import plan_store
+
+BACKENDS = ("postgres", "chat")
 
 
 class TestHealthEndpoint:
@@ -28,7 +30,7 @@ class TestHealthEndpoint:
 
         assert body["service"] == "coupletrip"
         assert body["status"] in ("ok", "degraded")
-        for backend in ("postgres", "redis"):
+        for backend in BACKENDS:
             entry = body["storage"][backend]
             assert set(entry) == {"configured", "connected", "error"}
             assert isinstance(entry["connected"], bool)
@@ -37,10 +39,7 @@ class TestHealthEndpoint:
         """`status` must be derived from the reported state, never hardcoded ok."""
         client = TestClient(app)
         body = client.get("/health").json()
-        connected = (
-            body["storage"]["postgres"]["connected"]
-            and body["storage"]["redis"]["connected"]
-        )
+        connected = all(body["storage"][b]["connected"] for b in BACKENDS)
         assert body["status"] == ("ok" if connected else "degraded")
 
     def test_degraded_reports_the_reason(self, monkeypatch):
@@ -73,10 +72,18 @@ class TestStoreHealth:
         assert result["error"] == "boom"
 
     @pytest.mark.asyncio
-    async def test_session_store_health_shape(self):
-        result = await session_store.health()
+    async def test_conversation_store_health_shape(self):
+        result = await conversation_store.health()
         assert set(result) == {"configured", "connected", "error"}
         assert isinstance(result["connected"], bool)
+
+    @pytest.mark.asyncio
+    async def test_conversation_store_health_after_failure(self, monkeypatch):
+        monkeypatch.setattr("services.conversation_store._pool_unavailable", True)
+        monkeypatch.setattr("services.conversation_store._pool_error", "chat down")
+        result = await conversation_store.health()
+        assert result["connected"] is False
+        assert result["error"] == "chat down"
 
 
 class TestStartupReport:

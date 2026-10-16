@@ -16,11 +16,15 @@ import logging
 from typing import Optional
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 from config.settings import settings
 
 logger = logging.getLogger("coupletrip")
+
+# L0 working memory: the caller decides how many turns to pass; each individual
+# turn is truncated so one pasted itinerary cannot blow up the context window.
+MAX_HISTORY_CONTENT_CHARS = 2000
 
 # ---------------------------------------------------------------------------
 # Per-provider client cache
@@ -106,6 +110,43 @@ def _extract_json(content: str) -> str:
     return content.strip()
 
 
+def _as_text(response) -> str:
+    """Coerce a LangChain response into plain text (some providers return lists)."""
+    content = response.content if hasattr(response, "content") else str(response)
+    return content if isinstance(content, str) else str(content)
+
+
+def _build_messages(
+    system_prompt: str,
+    user_prompt: str,
+    history: Optional[list[dict]] = None,
+) -> list:
+    """Assemble system prompt + remembered turns + the new user turn (L0 memory).
+
+    ``history`` is the transcript as ``[{"role": "user"|"assistant",
+    "content": str}, ...]``, oldest first. Unknown roles and empty turns are
+    skipped rather than raising, so a malformed row in the store cannot break
+    the conversation.
+    """
+    messages: list = [SystemMessage(content=system_prompt)]
+
+    for turn in history or []:
+        if not isinstance(turn, dict):
+            continue
+        content = str(turn.get("content") or "").strip()
+        if not content:
+            continue
+        content = content[:MAX_HISTORY_CONTENT_CHARS]
+        role = turn.get("role")
+        if role == "assistant":
+            messages.append(AIMessage(content=content))
+        elif role == "user":
+            messages.append(HumanMessage(content=content))
+
+    messages.append(HumanMessage(content=user_prompt))
+    return messages
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -115,6 +156,7 @@ def call_llm(
     user_prompt: str,
     mock_response: dict | None = None,
     provider: str | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     """Call the LLM with system + user prompts.
 
@@ -127,6 +169,7 @@ def call_llm(
         provider:      One of ``"openai"``, ``"deepseek"``, ``"qwen"``,
                        ``"kimi"``.  Defaults to ``DEFAULT_LLM_PROVIDER``
                        from settings (which itself defaults to ``"openai"``).
+        history:       Optional prior turns (L0 memory), oldest first.
 
     Returns:
         A dict parsed from the LLM's JSON response, or *mock_response*.
@@ -138,10 +181,7 @@ def call_llm(
         return mock_response or {"error": f"API key not configured for provider '{provider}'"}
 
     try:
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
+        messages = _build_messages(system_prompt, user_prompt, history)
         response = llm.invoke(messages)
         content = response.content if hasattr(response, "content") else str(response)
         return json.loads(_extract_json(content))
@@ -166,6 +206,7 @@ async def acall_llm(
     user_prompt: str,
     mock_response: dict | None = None,
     provider: str | None = None,
+    history: list[dict] | None = None,
 ) -> dict:
     """Async counterpart of call_llm using llm.ainvoke().
 
@@ -179,10 +220,7 @@ async def acall_llm(
         return mock_response or {"error": f"API key not configured for provider '{provider}'"}
 
     try:
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
+        messages = _build_messages(system_prompt, user_prompt, history)
         response = await llm.ainvoke(messages)
         content = response.content if hasattr(response, "content") else str(response)
         return json.loads(_extract_json(content))
@@ -193,5 +231,44 @@ async def acall_llm(
             exc_info=True,
         )
         if mock_response is not None:
+            return mock_response
+        raise
+
+
+async def acall_llm_text(
+    system_prompt: str,
+    user_prompt: str,
+    history: list[dict] | None = None,
+    provider: str | None = None,
+    mock_response: str = "",
+) -> str:
+    """Free-form counterpart of :func:`acall_llm`: returns plain text.
+
+    The structured call is right for intent/slot extraction, but forcing a
+    JSON contract on a *knowledge question* is why the agent used to answer
+    "好问题～不过我更擅长帮你规划行程" instead of actually answering. This
+    entry point exists for the cases where the model must genuinely reply:
+    travel questions, chit-chat, and summary compression (L1).
+
+    Returns ``mock_response`` (empty string by default) when no API key is
+    configured, so callers can fall back deterministically.
+    """
+    provider = provider or settings.default_llm_provider
+    llm = _get_llm(provider)
+
+    if llm is None:
+        return mock_response
+
+    try:
+        messages = _build_messages(system_prompt, user_prompt, history)
+        response = await llm.ainvoke(messages)
+        return _as_text(response).strip()
+    except Exception as e:
+        logger.warning(
+            "LLM text call failed (provider=%s): %s; using mock_response",
+            provider, e,
+            exc_info=True,
+        )
+        if mock_response:
             return mock_response
         raise

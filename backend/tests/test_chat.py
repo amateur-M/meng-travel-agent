@@ -1,6 +1,6 @@
-"""Tests for the conversational chat handler (P1.1).
+"""Tests for the conversational chat handler (P1.1, extended in V3/P1).
 
-Tests run WITHOUT Redis (session_store degrades gracefully) and
+Tests run WITHOUT PostgreSQL (conversation_store degrades gracefully) and
 WITHOUT LLM keys (conversation.py falls back to _mock_handle).
 """
 
@@ -160,11 +160,12 @@ class TestHandleChatIntegration:
         assert reply.session_id == sid
 
     @pytest.mark.asyncio
-    async def test_no_500_without_redis(self):
-        """Should not raise even when Redis is unavailable."""
-        with patch("services.session_store._redis_unavailable", True):
+    async def test_no_500_without_postgres(self):
+        """Should not raise even when the conversation store is unavailable."""
+        with patch("services.conversation_store._pool_unavailable", True):
             reply = await handle_chat("嗨", None)
         assert isinstance(reply, ChatReply)
+        assert reply.session_id  # still generated so the client can keep going
 
     @pytest.mark.asyncio
     async def test_question_does_not_change_slots(self):
@@ -321,8 +322,8 @@ class TestHandleChatModify:
     @pytest.mark.asyncio
     async def test_budget_patch_merged_and_ready_reset(self):
         with patch(
-            "services.session_store.session_store.get_slots",
-            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+            "services.conversation_store.conversation_store.get_session",
+            new=AsyncMock(return_value={"slots": dict(COMPLETE_SLOTS)}),
         ):
             reply = await handle_chat("预算加到8千", "sess-modify-budget")
 
@@ -337,8 +338,8 @@ class TestHandleChatModify:
     @pytest.mark.asyncio
     async def test_add_one_day_patch_merged(self):
         with patch(
-            "services.session_store.session_store.get_slots",
-            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+            "services.conversation_store.conversation_store.get_session",
+            new=AsyncMock(return_value={"slots": dict(COMPLETE_SLOTS)}),
         ):
             reply = await handle_chat("再加一天", "sess-modify-days")
 
@@ -358,8 +359,8 @@ class TestHandleChatModify:
             "modify_patch": {"budget": "8千"},
         }
         with patch(
-            "services.session_store.session_store.get_slots",
-            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+            "services.conversation_store.conversation_store.get_session",
+            new=AsyncMock(return_value={"slots": dict(COMPLETE_SLOTS)}),
         ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
             reply = await handle_chat("预算加到8千", "sess-llm")
 
@@ -379,8 +380,8 @@ class TestHandleChatModify:
             "modify_patch": {"end_date": "再加一天"},
         }
         with patch(
-            "services.session_store.session_store.get_slots",
-            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+            "services.conversation_store.conversation_store.get_session",
+            new=AsyncMock(return_value={"slots": dict(COMPLETE_SLOTS)}),
         ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
             reply = await handle_chat("再加一天", "sess-llm-days")
 
@@ -396,8 +397,8 @@ class TestHandleChatModify:
             "modify_patch": None,
         }
         with patch(
-            "services.session_store.session_store.get_slots",
-            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+            "services.conversation_store.conversation_store.get_session",
+            new=AsyncMock(return_value={"slots": dict(COMPLETE_SLOTS)}),
         ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
             reply = await handle_chat("改一下", "sess-no-patch")
 
