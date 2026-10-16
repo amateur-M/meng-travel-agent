@@ -19,8 +19,11 @@ from schemas import TripPlanRequest, TripPlanResponse
 from schemas.chat import (
     ChatRequest,
     ChatReply,
+    MessageListResponse,
     ProfileRequest,
     RenameSessionRequest,
+    SessionDetail,
+    SessionListResponse,
 )
 from agents.state import AgentState
 from agents.graph import graph
@@ -125,7 +128,7 @@ async def health_check():
 
 # ── Chat endpoint (P1.1) ─────────────────────────────────────────
 
-@app.post("/api/chat")
+@app.post("/api/chat", response_model=ChatReply)
 @limiter.limit(settings.rate_limit_chat)
 async def chat(request: Request, body: ChatRequest, _: None = Depends(verify_api_key)):
     """Conversational endpoint: intent classification + slot extraction.
@@ -149,7 +152,7 @@ async def chat(request: Request, body: ChatRequest, _: None = Depends(verify_api
 
 # ── Chat session management (V3/P1) ──────────────────────────────
 
-@app.get("/api/chat/sessions")
+@app.get("/api/chat/sessions", response_model=SessionListResponse)
 async def list_chat_sessions(
     client_id: Optional[str] = Query(default=None, description="按浏览器客户端过滤"),
     page: int = Query(default=1, ge=1),
@@ -164,7 +167,7 @@ async def list_chat_sessions(
     return {"page": page, "size": size, "items": items}
 
 
-@app.get("/api/chat/sessions/{session_id}")
+@app.get("/api/chat/sessions/{session_id}", response_model=SessionDetail)
 async def get_chat_session(
     session_id: str,
     _: None = Depends(verify_api_key),
@@ -176,7 +179,7 @@ async def get_chat_session(
     return session
 
 
-@app.get("/api/chat/sessions/{session_id}/messages")
+@app.get("/api/chat/sessions/{session_id}/messages", response_model=MessageListResponse)
 async def get_chat_messages(
     session_id: str,
     page: int = Query(default=1, ge=1),

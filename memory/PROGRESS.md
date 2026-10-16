@@ -391,7 +391,7 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**382 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
+- [x] 后端 `pytest -q`：**387 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
   跳过原因显式打印）
 - [x] **不依赖数据库也能验证完整对话链路**：`tests/test_conversation_e2e.py` 用
   `InMemoryConversationStore`（并断言它实现了真实 store 的每个公开方法，防止假实现腐化）
@@ -401,6 +401,11 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - [x] 前端 `npm run build` 通过（2264 modules，产物 gzip 131.93 kB）+ `npm run check:store` 49/49
 - [x] E2E 用例纳入类型检查（新增 `tsconfig.e2e.json`；CI 的 `tsc --noEmit` 改为 `tsc -b`，
   前者在根项目 `files: []` 下实际什么都没检查）
+- [x] **前后端 URL 契约纳入测试**：`tests/test_api_contract.py` 从
+  `frontend/src/services/chat.ts` 抽出真实调用的 URL 与方法，比对应用自身的 OpenAPI
+  schema（按形状比对，占位符名不敏感），并校验前端依赖的请求/响应字段仍在。
+  写这条测试时发现 `ChatReply`/`SessionDetail`/`SessionListResponse`/`MessageListResponse`
+  已定义却从未挂成 `response_model`（等于死代码、响应结构无文档），已一并接线
 - [ ] 恢复矩阵中依赖**真实数据库**的条目（刷新恢复、跨天、多标签、切换、真实 PG 往返）
   待 T0.2 后按 `DEPLOY.md` 手工冒烟清单逐条勾选
 
