@@ -231,6 +231,19 @@ class TestTurnPersistence:
         assert mocks["append_message"].call_args_list[1].args[2] == "记住这条"
 
     @pytest.mark.asyncio
+    async def test_assistant_reply_is_keyed_off_the_user_turn(self):
+        """Whole-turn idempotency: a replayed turn must not add a second reply."""
+        mocks = store_mocks()
+        with chat_context(mocks), patch(
+            "agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())
+        ):
+            await handle_chat("你好", "s1", message_id="turn-9")
+
+        user_turn, assistant_turn = mocks["append_message"].call_args_list
+        assert user_turn.kwargs["message_id"] == "turn-9"
+        assert assistant_turn.kwargs["message_id"] == "turn-9:reply"
+
+    @pytest.mark.asyncio
     async def test_slots_and_plan_request_persisted_when_ready(self):
         mocks = store_mocks(
             get_session=AsyncMock(return_value={"slots": COMPLETE_SLOTS, "summary": None})

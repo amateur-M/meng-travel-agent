@@ -448,6 +448,12 @@ def _mock_handle(message: str, existing_slots: dict) -> dict:
     if dest_match:
         new_slots["destination"] = dest_match.group(2)
 
+    # Extract origin — "从上海出发" / "从北京去大理". Feeds both the slots and the
+    # durable L2 profile, so the rule-based path needs it too.
+    origin_match = re.search(r"(?:从|由)\s*([^\s，。,、]{2,6}?)\s*(?:出发|去|到|飞)", msg)
+    if origin_match:
+        new_slots["origin"] = origin_match.group(1)
+
     # Extract budget
     budget_match = re.search(r"(\d[\d.]*万?千?)\s*[元块]", msg) or re.search(r"预算\s*(\d[\d.]*万?千?)", msg)
     if budget_match:
@@ -604,8 +610,9 @@ async def handle_chat(
 
     # Persist the user turn before calling the LLM (recovery matrix #5): if the
     # browser dies mid-request, their message is not lost.
+    user_message_id = message_id or generate_session_id()
     await conversation_store.append_message(
-        sid, "user", message, message_id=message_id or generate_session_id()
+        sid, "user", message, message_id=user_message_id
     )
 
     # ── Call 1: intent + slots, with memory ──────────────────────────
@@ -679,7 +686,12 @@ async def handle_chat(
     elif not reply:
         reply = _planning_reply(intent, processed_slots)
 
-    await conversation_store.append_message(sid, "assistant", reply)
+    # Key the reply off the user turn so a *whole* turn is idempotent: a replay
+    # of a turn that already completed skips both rows instead of appending a
+    # second assistant reply (recovery #6).
+    await conversation_store.append_message(
+        sid, "assistant", reply, message_id=f"{user_message_id}:reply"
+    )
 
     # ── L2: promote durable facts learned this turn ──────────────────
     # Read-modify-write against the profile loaded above. A concurrent write

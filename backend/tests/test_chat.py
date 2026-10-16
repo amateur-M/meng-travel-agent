@@ -119,6 +119,20 @@ class TestMockHandle:
         result = _mock_handle("想去大理", {})
         assert result["slots"].get("destination") == "大理"
 
+    def test_extract_origin_from_departure_phrase(self):
+        """Origin feeds the durable L2 profile, so the no-key path needs it too."""
+        result = _mock_handle("我们从上海出发", {})
+        assert result["slots"].get("origin") == "上海"
+
+    def test_extract_origin_and_destination_together(self):
+        result = _mock_handle("从北京去大理", {})
+        assert result["slots"].get("origin") == "北京"
+        assert result["slots"].get("destination") == "大理"
+
+    def test_no_origin_without_a_departure_phrase(self):
+        result = _mock_handle("想去大理", {})
+        assert not result["slots"].get("origin")
+
     def test_extract_budget(self):
         result = _mock_handle("预算5千元", {})
         assert result["slots"].get("budget") == 5000.0

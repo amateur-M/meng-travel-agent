@@ -28,7 +28,7 @@
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
 >
 > **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
-> 后端 **364 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
+> 后端 **382 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
 > 期间发现两处必须记录的设计修正，见 §11。
 
 ---
@@ -363,10 +363,13 @@ Chat 头部显示会话标题；画像可折叠展示并允许纠正。
 | T1.3 ⭐ | `handle_chat` 接入 history + 先落 user 消息 + 落 assistant + 自动标题 | ✅ | agents/conversation.py |
 | T1.4 ⭐ | question/greeting 走第二调用真回答（含 mock 兜底话术升级） | ✅ | agents/conversation.py + prompts/chat_reply_prompt.md |
 | T1.5 ⭐ | 会话 CRUD + messages 端点（§5.5 前 6 个） | ✅ | main.py + schemas/chat.py |
-| T1.6 ⭐ | 后端测试：多轮记忆传入、真回答分支、CRUD、幂等、PG 不可达降级 | ✅ | test_conversation_memory.py(21) / test_chat_sessions_api.py(23) / test_conversation_store_pg.py |
+| T1.6 ⭐ | 后端测试：多轮记忆传入、真回答分支、CRUD、幂等、PG 不可达降级 | ✅ | test_conversation_memory.py(23) / test_chat_sessions_api.py(23) / test_conversation_e2e.py(14) / test_conversation_store_pg.py |
 
-**P1 出口**：两轮对话可复现"第二轮引用第一轮" ✅（单测断言 history 真的进了 prompt，且加载顺序为
-"先读窗口再追加当前轮"）；消息真实落库 ⏸（待 T0.2）；`message_id` 去重 ✅；pytest 全绿 ✅。
+**P1 出口**：两轮对话可复现"第二轮引用第一轮" ✅ —— **不必等数据库**：
+`tests/test_conversation_e2e.py` 用内存假 store 驱动 ASGI 应用，端到端断言了
+"turn 2 的 history 里真的有 turn 1，且不含当前轮"；真实 PostgreSQL 往返 ⏸（待 T0.2）；
+`message_id` 去重 ✅（整轮幂等：assistant 回复以 `<user_message_id>:reply` 为键）；
+pytest 全绿 ✅。
 
 ### P2 长期记忆（L1/L2/L3）
 
@@ -513,6 +516,14 @@ PostgreSQL"），每个提交都是绿的。
 这个错误方向。现在失败时会用一次直接连接取出根因再上报。
 
 ### 11.5 未闭环项（需要你执行）
+
+> 2026-10-16 补充：为降低对 T0.2 的依赖，新增了**不依赖数据库的端到端测试**
+> （`tests/test_conversation_e2e.py`，用 `InMemoryConversationStore` 驱动真实 ASGI 应用，
+> 并断言该假实现覆盖了真实 store 的每个公开方法以防腐化）。因此下列内容已可在无 PG 时验证：
+> 两轮对话按序落库、第二轮看到第一轮、重放不重复、修改轮合并进槽位、画像跨会话、
+> 超窗口写摘要、会话 CRUD 与级联删除。
+> **仍然只有 T0.2 能验证的**：真实 PostgreSQL 的读写往返（含 JSONB、唯一约束、级联、
+> 真实并发下的增量摘要游标），以及浏览器里的刷新/多标签/跨天表现。
 
 1. **T0.2**：本机 PostgreSQL 18.6（`D:\Software\Postgresql18`）对所有连接要求
    scram-sha-256，而 `.env` 里的 `coupletrip / coupletrip_dev` 认证失败。已在
