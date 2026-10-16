@@ -21,8 +21,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from agents.conversation import HISTORY_TURNS, handle_chat
+from agents.conversation import handle_chat
+from agents.memory import HISTORY_MESSAGES
 from schemas.chat import ChatReply
+from tests.helpers import chat_context, llm_reply, store_mocks
 
 TRANSCRIPT = [
     {"role": "user", "content": "我想去大理", "created_at": None},
@@ -37,36 +39,6 @@ COMPLETE_SLOTS = {
 }
 
 
-def store_mocks(**overrides):
-    """Every ConversationStore method ``handle_chat`` touches."""
-    mocks = {
-        "ensure_session": AsyncMock(return_value=True),
-        "get_session": AsyncMock(return_value={"slots": {}, "summary": None}),
-        "get_recent_messages": AsyncMock(return_value=[]),
-        "append_message": AsyncMock(return_value=True),
-        "update_slots": AsyncMock(return_value=True),
-        "set_title_if_empty": AsyncMock(return_value=True),
-        "set_plan_request": AsyncMock(return_value=True),
-    }
-    mocks.update(overrides)
-    return mocks
-
-
-@contextlib.contextmanager
-def patched_store(mocks):
-    with patch.multiple("services.conversation_store.conversation_store", **mocks):
-        yield mocks
-
-
-def llm_reply(intent="planning_intent", reply="好的", slots=None, modify_patch=None):
-    return {
-        "intent": intent,
-        "reply": reply,
-        "slots": slots or {},
-        "modify_patch": modify_patch,
-    }
-
-
 # ── L0: history reaches the model ────────────────────────────────────
 
 class TestWorkingMemory:
@@ -77,7 +49,7 @@ class TestWorkingMemory:
         mocks = store_mocks(get_recent_messages=AsyncMock(return_value=TRANSCRIPT))
         intent_call = AsyncMock(return_value=llm_reply())
 
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=intent_call):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=intent_call):
             await handle_chat("三天吧", "s1")
 
         assert intent_call.call_args.kwargs["history"] == TRANSCRIPT
@@ -104,7 +76,7 @@ class TestWorkingMemory:
         mocks["get_recent_messages"] = AsyncMock(side_effect=load)
         mocks["append_message"] = AsyncMock(side_effect=append)
 
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(side_effect=call)):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(side_effect=call)):
             await handle_chat("三天吧", "s1")
 
         assert order == ["load_history", "append_user", "llm", "append_assistant"]
@@ -112,9 +84,9 @@ class TestWorkingMemory:
     @pytest.mark.asyncio
     async def test_history_window_is_bounded(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat("你好", "s1")
-        assert mocks["get_recent_messages"].call_args.kwargs["limit"] == HISTORY_TURNS
+        assert mocks["get_recent_messages"].call_args.kwargs["limit"] == HISTORY_MESSAGES
 
 
 # ── Real answers instead of a canned deflection ──────────────────────
@@ -128,7 +100,7 @@ class TestConversationalReplies:
         answer = "大理九月白天 20 度上下，早晚偏凉，环洱海骑行很舒服。"
         text_call = AsyncMock(return_value=answer)
 
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="question", reply="（不该出现的固定话术）")),
         ), patch("agents.conversation.acall_llm_text", new=text_call):
@@ -143,7 +115,7 @@ class TestConversationalReplies:
         mocks = store_mocks(get_recent_messages=AsyncMock(return_value=TRANSCRIPT))
         text_call = AsyncMock(return_value="好的答案")
 
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="question")),
         ), patch("agents.conversation.acall_llm_text", new=text_call):
@@ -155,7 +127,7 @@ class TestConversationalReplies:
     async def test_question_falls_back_when_no_api_key(self):
         """acall_llm_text returns "" without a key — the warning must not win."""
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="question", reply="固定话术兜底")),
         ), patch("agents.conversation.acall_llm_text", new=AsyncMock(return_value="")):
@@ -166,7 +138,7 @@ class TestConversationalReplies:
     @pytest.mark.asyncio
     async def test_greeting_uses_generated_answer(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="greeting", reply="固定问候")),
         ), patch("agents.conversation.acall_llm_text", new=AsyncMock(return_value="生成问候")):
@@ -181,7 +153,7 @@ class TestConversationalReplies:
         mocks = store_mocks()
         text_call = AsyncMock(return_value="不该被调用")
 
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="planning_intent", reply="还差日期和预算")),
         ), patch("agents.conversation.acall_llm_text", new=text_call):
@@ -193,7 +165,7 @@ class TestConversationalReplies:
     @pytest.mark.asyncio
     async def test_missing_reply_falls_back_to_template(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="planning_intent", reply="")),
         ):
@@ -210,7 +182,7 @@ class TestTurnPersistence:
     @pytest.mark.asyncio
     async def test_client_message_id_is_forwarded(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat("你好", "s1", message_id="turn-abc")
 
         # The first append is the user's turn; the last one is the assistant's.
@@ -221,7 +193,7 @@ class TestTurnPersistence:
     @pytest.mark.asyncio
     async def test_server_generates_message_id_when_absent(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat("你好", "s1")
 
         generated = mocks["append_message"].call_args_list[0].kwargs["message_id"]
@@ -231,7 +203,7 @@ class TestTurnPersistence:
     async def test_session_is_ensured_before_use(self):
         """A stale local session_id must self-heal, not fail the foreign key."""
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat("你好", "stale-session", client_id="client-1")
 
         mocks["ensure_session"].assert_awaited_once_with("stale-session", "client-1")
@@ -239,7 +211,7 @@ class TestTurnPersistence:
     @pytest.mark.asyncio
     async def test_new_session_id_generated(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             reply = await handle_chat("你好", None)
 
         assert isinstance(reply, ChatReply)
@@ -249,7 +221,7 @@ class TestTurnPersistence:
     @pytest.mark.asyncio
     async def test_assistant_reply_is_stored(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply(reply="记住这条"))
         ):
             await handle_chat("你好", "s1")
@@ -263,7 +235,7 @@ class TestTurnPersistence:
         mocks = store_mocks(
             get_session=AsyncMock(return_value={"slots": COMPLETE_SLOTS, "summary": None})
         )
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="planning_ready", slots=COMPLETE_SLOTS)),
         ):
@@ -282,7 +254,7 @@ class TestSessionTitles:
     @pytest.mark.asyncio
     async def test_title_from_first_substantive_message(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat("想去大理玩三天，预算五千", "s1")
 
         assert mocks["set_title_if_empty"].call_args.args[1] == "想去大理玩三天，预算五千"
@@ -291,7 +263,7 @@ class TestSessionTitles:
     async def test_title_truncated(self):
         mocks = store_mocks()
         long_message = "我" * 60
-        with patched_store(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
+        with chat_context(mocks), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply())):
             await handle_chat(long_message, "s1")
 
         assert len(mocks["set_title_if_empty"].call_args.args[1]) == 20
@@ -300,7 +272,7 @@ class TestSessionTitles:
     async def test_greeting_and_question_do_not_title(self):
         for intent in ("greeting", "question"):
             mocks = store_mocks()
-            with patched_store(mocks), patch(
+            with chat_context(mocks), patch(
                 "agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply(intent=intent))
             ), patch("agents.conversation.acall_llm_text", new=AsyncMock(return_value="答")):
                 await handle_chat("你好", "s1")
@@ -315,7 +287,7 @@ class TestDegradation:
     @pytest.mark.asyncio
     async def test_intent_call_failure_degrades_to_mock(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm", new=AsyncMock(side_effect=RuntimeError("provider down"))
         ):
             reply = await handle_chat("想去大理", "s1")
@@ -326,7 +298,7 @@ class TestDegradation:
     @pytest.mark.asyncio
     async def test_answer_call_failure_uses_fallback(self):
         mocks = store_mocks()
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm",
             new=AsyncMock(return_value=llm_reply(intent="question", reply="兜底回复")),
         ), patch(
@@ -346,7 +318,7 @@ class TestDegradation:
             append_message=AsyncMock(return_value=False),
             update_slots=AsyncMock(return_value=False),
         )
-        with patched_store(mocks), patch(
+        with chat_context(mocks), patch(
             "agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply(reply="照样回复"))
         ):
             reply = await handle_chat("你好", None)

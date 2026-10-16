@@ -72,7 +72,9 @@ async def test_conversation_store_round_trip():
         assert await conversation_store.rename_session(session_id, "新标题") is True
 
         # ── L1 summary / plan link / plan request ───────────────
-        assert await conversation_store.set_summary(session_id, "用户计划去大理三天") is True
+        assert await conversation_store.set_summary(
+            session_id, "用户计划去大理三天", covered_messages=6
+        ) is True
         assert await conversation_store.set_plan_request(
             session_id, {"destination": "大理", "budget": 5000}
         ) is True
@@ -80,9 +82,23 @@ async def test_conversation_store_round_trip():
 
         session = await conversation_store.get_session(session_id)
         assert session["summary"] == "用户计划去大理三天"
+        assert session["summary_message_count"] == 6, "incremental summary cursor persists"
         assert session["plan_request"]["destination"] == "大理"
         assert session["last_plan_id"] == "plan-abc"
         assert session["title"] == "新标题"
+
+        # ── L2 profile round-trip ────────────────────────────────
+        assert await conversation_store.get_profile(client_id) == {}
+        assert await conversation_store.merge_profile(
+            client_id, {"origin": "上海", "avoid": ["辣"]}
+        ) is True
+        assert await conversation_store.get_profile(client_id) == {
+            "origin": "上海",
+            "avoid": ["辣"],
+        }
+        # upsert replaces, it does not duplicate
+        assert await conversation_store.merge_profile(client_id, {"origin": "上海"}) is True
+        assert await conversation_store.get_profile(client_id) == {"origin": "上海"}
 
         # ── conversation list ────────────────────────────────────
         listed = await conversation_store.list_sessions(client_id=client_id, limit=50)
@@ -100,6 +116,8 @@ async def test_conversation_store_round_trip():
         assert await conversation_store.get_messages(session_id) == [], "messages cascade with the session"
     finally:
         await conversation_store.delete_session(session_id)
+        # the profile row is keyed by client_id, not the session — clean it too
+        await conversation_store.delete_profile(client_id)
 
 
 @pytest.mark.asyncio

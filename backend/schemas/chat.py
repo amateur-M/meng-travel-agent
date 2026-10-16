@@ -119,3 +119,20 @@ class RenameSessionRequest(BaseModel):
     """Body for PATCH /api/chat/sessions/{id}."""
 
     title: str = Field(..., min_length=1, max_length=60, description="新的会话标题")
+
+
+class ProfilePatch(BaseModel):
+    """Manual L2 corrections — e.g. the user says "记住我不吃辣" (V3/P2)."""
+
+    origin: Optional[str] = None
+    pace: Optional[str] = None
+    preferences: Optional[List[str]] = None
+    avoid: Optional[List[str]] = None
+    budget: Optional[float] = Field(None, gt=0)
+
+
+class ProfileRequest(BaseModel):
+    """Body for PATCH /api/profile."""
+
+    client_id: str = Field(..., min_length=1, max_length=64, description="浏览器侧稳定 id")
+    patch: ProfilePatch

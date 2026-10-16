@@ -179,3 +179,81 @@ class TestChatForwarding:
         assert response.status_code == 200
         assert m.call_args.kwargs == {"client_id": "client-1", "message_id": "turn-1"}
         assert m.call_args.args == ("想去大理", "s1")
+
+
+class TestProfileEndpoints:
+    """L2 memory is readable and manually correctable (V3/P2)."""
+
+    def test_get_profile(self, client):
+        with patch(
+            f"{SESSIONS}.get_profile",
+            new=AsyncMock(return_value={"origin": "上海", "avoid": ["辣"]}),
+        ):
+            response = client.get("/api/profile?client_id=c1")
+
+        assert response.status_code == 200
+        assert response.json() == {
+            "client_id": "c1",
+            "profile": {"origin": "上海", "avoid": ["辣"]},
+        }
+
+    def test_get_profile_requires_a_client_id(self, client):
+        assert client.get("/api/profile").status_code == 422
+
+    def test_patch_merges_without_erasing(self, client):
+        """A manual correction must not drop what the agent already learned."""
+        with patch(
+            f"{SESSIONS}.get_profile", new=AsyncMock(return_value={"origin": "北京"})
+        ), patch(f"{SESSIONS}.merge_profile", new=AsyncMock(return_value=True)) as merged:
+            response = client.patch(
+                "/api/profile",
+                json={"client_id": "c1", "patch": {"origin": "上海", "avoid": ["辣"]}},
+            )
+
+        assert response.status_code == 200
+        stored = response.json()["profile"]
+        assert stored["origin"] == "上海"
+        assert stored["conflicts"]["origin"] == ["北京"]
+        assert stored["avoid"] == ["辣"]
+        merged.assert_awaited_once()
+
+    def test_patch_with_no_fields_does_not_write(self, client):
+        with patch(
+            f"{SESSIONS}.get_profile", new=AsyncMock(return_value={"origin": "北京"})
+        ), patch(f"{SESSIONS}.merge_profile", new=AsyncMock(return_value=True)) as merged:
+            response = client.patch("/api/profile", json={"client_id": "c1", "patch": {}})
+
+        assert response.status_code == 200
+        assert response.json()["profile"] == {"origin": "北京"}
+        merged.assert_not_awaited()
+
+    def test_patch_rejects_negative_budget(self, client):
+        response = client.patch(
+            "/api/profile", json={"client_id": "c1", "patch": {"budget": -5}}
+        )
+        assert response.status_code == 422
+
+
+class TestRecallEndpoint:
+    """L3 episodic memory preview for the UI."""
+
+    def test_returns_trips_and_feedback(self, client):
+        recall = {
+            "trips": [{"plan_id": "p1", "destination": "大理", "status": "completed"}],
+            "feedback": [{"activity_name": "洱海骑行", "up": 2, "down": 0}],
+        }
+        with patch("main.load_episodic_recall", new=AsyncMock(return_value=recall)):
+            response = client.get("/api/chat/recall")
+
+        assert response.status_code == 200
+        assert response.json() == recall
+
+    def test_empty_recall_is_not_an_error(self, client):
+        with patch(
+            "main.load_episodic_recall",
+            new=AsyncMock(return_value={"trips": [], "feedback": []}),
+        ):
+            response = client.get("/api/chat/recall")
+
+        assert response.status_code == 200
+        assert response.json() == {"trips": [], "feedback": []}

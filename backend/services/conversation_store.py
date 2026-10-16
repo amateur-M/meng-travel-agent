@@ -114,7 +114,13 @@ def _get_pool() -> Optional[ConnectionPool]:
 
 
 def _init_ddl(conn) -> None:
-    """Create the chat tables if they do not exist (idempotent)."""
+    """Create the chat tables if they do not exist (idempotent).
+
+    ``ALTER TABLE ... ADD COLUMN IF NOT EXISTS`` is used for columns added after
+    the first release (L1's ``summary_message_count``): ``CREATE TABLE IF NOT
+    EXISTS`` alone is a no-op on an existing table, so a new column would never
+    appear on a database created by an earlier version.
+    """
     with conn.cursor() as cur:
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chat_sessions (
@@ -129,6 +135,11 @@ def _init_ddl(conn) -> None:
                 updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # L1: how many leading messages the rolling summary already covers
+        cur.execute("""
+            ALTER TABLE chat_sessions
+            ADD COLUMN IF NOT EXISTS summary_message_count INT NOT NULL DEFAULT 0
+        """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
                 id         BIGSERIAL PRIMARY KEY,
@@ -137,6 +148,15 @@ def _init_ddl(conn) -> None:
                 role       TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
                 content    TEXT NOT NULL,
                 created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        # L2: durable profile keyed by the browser's client_id
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_profiles (
+                client_id  TEXT PRIMARY KEY,
+                user_id    TEXT,
+                profile    JSONB NOT NULL DEFAULT '{}'::jsonb,
+                updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
         cur.execute("""
@@ -219,7 +239,8 @@ class ConversationStore:
                         SELECT s.session_id, s.title, s.summary, s.slots,
                                s.plan_request, s.last_plan_id, s.client_id,
                                s.created_at, s.updated_at,
-                               COALESCE(c.cnt, 0) AS message_count
+                               COALESCE(c.cnt, 0) AS message_count,
+                               s.summary_message_count
                         FROM chat_sessions s
                         LEFT JOIN (
                             SELECT session_id, COUNT(*) AS cnt
@@ -243,6 +264,7 @@ class ConversationStore:
                 "created_at": _iso(row[7]),
                 "updated_at": _iso(row[8]),
                 "message_count": int(row[9]),
+                "summary_message_count": int(row[10] or 0),
             }
         except Exception as exc:
             logger.warning("ConversationStore.get_session failed: %s", exc)
@@ -550,26 +572,104 @@ class ConversationStore:
             logger.warning("ConversationStore.set_plan_request failed: %s", exc)
             return False
 
-    async def set_summary(self, session_id: str, summary: Optional[str]) -> bool:
-        """Persist the L1 rolling summary of turns that fell out of the window."""
-        return await asyncio.to_thread(self._set_summary, session_id, summary)
+    async def set_summary(
+        self,
+        session_id: str,
+        summary: Optional[str],
+        covered_messages: Optional[int] = None,
+    ) -> bool:
+        """Persist the L1 rolling summary and how many messages it covers.
 
-    def _set_summary(self, session_id: str, summary: Optional[str]) -> bool:
+        ``covered_messages`` is what makes the summary *incremental*: the next
+        update only compresses the turns that fell out of the window since,
+        instead of re-reading the whole conversation.
+        """
+        return await asyncio.to_thread(
+            self._set_summary, session_id, summary, covered_messages
+        )
+
+    def _set_summary(
+        self, session_id: str, summary: Optional[str], covered_messages: Optional[int]
+    ) -> bool:
         pool = _get_pool()
         if pool is None:
             return False
         try:
             with pool.connection() as conn:
                 with conn.cursor() as cur:
-                    cur.execute(
-                        "UPDATE chat_sessions SET summary = %s WHERE session_id = %s",
-                        (summary, session_id),
-                    )
+                    if covered_messages is None:
+                        cur.execute(
+                            "UPDATE chat_sessions SET summary = %s WHERE session_id = %s",
+                            (summary, session_id),
+                        )
+                    else:
+                        cur.execute(
+                            """
+                            UPDATE chat_sessions
+                            SET summary = %s, summary_message_count = %s
+                            WHERE session_id = %s
+                            """,
+                            (summary, covered_messages, session_id),
+                        )
                     updated = cur.rowcount
                 conn.commit()
             return updated > 0
         except Exception as exc:
             logger.warning("ConversationStore.set_summary failed: %s", exc)
+            return False
+
+    # ── L2: durable profile ───────────────────────────────────────
+
+    async def get_profile(self, client_id: str) -> dict:
+        """Return the stored profile for a client (empty dict when unknown)."""
+        return await asyncio.to_thread(self._get_profile, client_id)
+
+    def _get_profile(self, client_id: str) -> dict:
+        pool = _get_pool()
+        if pool is None or not client_id:
+            return {}
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT profile FROM user_profiles WHERE client_id = %s",
+                        (client_id,),
+                    )
+                    row = cur.fetchone()
+            return (row[0] or {}) if row else {}
+        except Exception as exc:
+            logger.warning("ConversationStore.get_profile failed: %s", exc)
+            return {}
+
+    async def merge_profile(self, client_id: str, merged_profile: dict) -> bool:
+        """Upsert an already-merged profile.
+
+        Merging itself lives in ``agents.memory`` (pure, unit-tested); the
+        store only has to write it atomically.
+        """
+        return await asyncio.to_thread(self._merge_profile, client_id, merged_profile)
+
+    def _merge_profile(self, client_id: str, merged_profile: dict) -> bool:
+        pool = _get_pool()
+        if pool is None or not client_id:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO user_profiles (client_id, profile, updated_at)
+                        VALUES (%s, %s::jsonb, now())
+                        ON CONFLICT (client_id) DO UPDATE
+                            SET profile = EXCLUDED.profile,
+                                updated_at = now()
+                        """,
+                        (client_id, json.dumps(merged_profile or {}, ensure_ascii=False)),
+                    )
+                conn.commit()
+            return True
+        except Exception as exc:
+            logger.warning("ConversationStore.merge_profile failed: %s", exc)
             return False
 
     async def set_last_plan(self, session_id: str, plan_id: str) -> bool:
@@ -592,6 +692,27 @@ class ConversationStore:
             return updated > 0
         except Exception as exc:
             logger.warning("ConversationStore.set_last_plan failed: %s", exc)
+            return False
+
+    async def delete_profile(self, client_id: str) -> bool:
+        """Forget everything remembered about a client."""
+        return await asyncio.to_thread(self._delete_profile, client_id)
+
+    def _delete_profile(self, client_id: str) -> bool:
+        pool = _get_pool()
+        if pool is None or not client_id:
+            return False
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM user_profiles WHERE client_id = %s", (client_id,)
+                    )
+                    deleted = cur.rowcount
+                conn.commit()
+            return deleted > 0
+        except Exception as exc:
+            logger.warning("ConversationStore.delete_profile failed: %s", exc)
             return False
 
     # ── T0.4: Storage visibility ──────────────────────────────────

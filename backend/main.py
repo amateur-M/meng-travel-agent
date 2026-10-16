@@ -19,11 +19,13 @@ from schemas import TripPlanRequest, TripPlanResponse
 from schemas.chat import (
     ChatRequest,
     ChatReply,
+    ProfileRequest,
     RenameSessionRequest,
 )
 from agents.state import AgentState
 from agents.graph import graph
-from agents.conversation import handle_chat
+from agents import memory
+from agents.conversation import handle_chat, load_episodic_recall
 from services.storage import plan_store, generate_plan_id
 from services.conversation_store import conversation_store
 from deps import verify_api_key
@@ -225,6 +227,46 @@ async def delete_chat_session(
     if not deleted:
         return JSONResponse(status_code=404, content={"detail": "Session not found"})
     return {"session_id": session_id, "deleted": True}
+
+
+# ── Memory: profile (L2) and recall (L3) ─────────────────────────
+
+@app.get("/api/profile")
+async def get_profile(
+    client_id: str = Query(..., min_length=1, max_length=64),
+    _: None = Depends(verify_api_key),
+):
+    """Return the durable cross-session profile for this browser."""
+    profile = await conversation_store.get_profile(client_id)
+    return {"client_id": client_id, "profile": profile}
+
+
+@app.patch("/api/profile")
+async def update_profile(
+    body: ProfileRequest,
+    _: None = Depends(verify_api_key),
+):
+    """Manually correct the profile ("记住我不吃辣").
+
+    Uses the same merge rules as automatic extraction, so a manual entry can
+    never silently erase what the agent already learned.
+    """
+    current = await conversation_store.get_profile(body.client_id)
+    updates = {
+        k: v
+        for k, v in body.patch.model_dump().items()
+        if v is not None and v != [] and v != ""
+    }
+    merged = memory.merge_profile(current, updates)
+    if updates:
+        await conversation_store.merge_profile(body.client_id, merged)
+    return {"client_id": body.client_id, "profile": merged}
+
+
+@app.get("/api/chat/recall")
+async def get_recall(_: None = Depends(verify_api_key)):
+    """Episodic memory preview (L3) for the UI: past trips + activity feedback."""
+    return await load_episodic_recall()
 
 
 # ── SSE event helpers ───────────────────────────────────────────

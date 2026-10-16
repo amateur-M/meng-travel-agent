@@ -11,28 +11,27 @@ Two LLM calls at most, on purpose:
      deterministic confirmation (more reliable *and* cheaper than an extra
      generation).
 
-Sessions, slots and the transcript live in PostgreSQL (V3/P1) rather than a
-30-minute Redis TTL, so a conversation survives refreshes, restarts and days.
-When no LLM key is configured, :func:`_mock_handle` keeps everything working
-with rule-based fallbacks.
+Memory is layered (see ``agents.memory``): L0 recent transcript, L1 rolling
+summary of turns that slid out of the window, L2 durable cross-session profile,
+L3 past trips and activity feedback. Sessions, slots and the transcript live in
+PostgreSQL (V3/P1) rather than a 30-minute Redis TTL, so a conversation survives
+refreshes, restarts and days. When no LLM key is configured,
+:func:`_mock_handle` keeps everything working with rule-based fallbacks.
 """
 
+import asyncio
 import re
 import logging
 from datetime import date, timedelta
 from typing import Any
 
+from agents import memory
 from services.llm import acall_llm, acall_llm_text
 from services.conversation_store import conversation_store, generate_session_id
+from services.storage import plan_store
 from schemas.chat import ChatReply, Slots, ModifyPatch
 
 logger = logging.getLogger("coupletrip")
-
-# ── Memory window (L0) ───────────────────────────────────────────────
-
-# Turns of real transcript handed to the LLM. Older turns are represented by
-# the rolling summary (L1) instead of being replayed verbatim.
-HISTORY_TURNS = 10
 
 # Intents whose reply must be genuinely generated rather than templated.
 CONVERSATIONAL_INTENTS = ("question", "greeting")
@@ -515,6 +514,50 @@ def _planning_reply(intent: str, slots: dict) -> str:
     return f"记下了～还差{hints}，一起补全吧？"
 
 
+async def load_episodic_recall() -> dict:
+    """L3: recent trips and per-activity thumbs feedback.
+
+    Both live in the tables built earlier (``plans``, ``plan_feedback``) — this
+    is the first time the feedback table is read on the live path; until now it
+    was only consumed by the offline recompute script.
+    """
+    try:
+        trips = await asyncio.to_thread(plan_store.list, 20, 0)
+        feedback = await asyncio.to_thread(plan_store.list_feedback)
+    except Exception as exc:
+        logger.warning("L3 recall failed, continuing without it: %s", exc)
+        return {"trips": [], "feedback": []}
+    return {"trips": trips or [], "feedback": feedback or []}
+
+
+async def _maybe_update_summary(session_id: str) -> None:
+    """L1: fold turns that fell out of the window into the rolling summary.
+
+    Best-effort: a failure here must never cost the user their reply.
+    """
+    try:
+        session = await conversation_store.get_session(session_id)
+        if not session:
+            return
+
+        total = session.get("message_count", 0)
+        covered = session.get("summary_message_count", 0)
+        if not memory.should_summarise(total, covered):
+            return
+
+        overflow = total - memory.HISTORY_MESSAGES
+        newly_overflowed = await conversation_store.get_messages(
+            session_id, limit=overflow - covered, offset=covered
+        )
+        summary = await memory.compress_summary(session.get("summary"), newly_overflowed)
+        if summary:
+            await conversation_store.set_summary(
+                session_id, summary, covered_messages=overflow
+            )
+    except Exception as exc:
+        logger.warning("L1 summary update failed (conversation continues): %s", exc)
+
+
 async def handle_chat(
     message: str,
     session_id: str | None = None,
@@ -541,12 +584,23 @@ async def handle_chat(
     # foreign key on the first message.
     await conversation_store.ensure_session(sid, client_id)
 
-    session = await conversation_store.get_session(sid)
-    existing_slots = (session or {}).get("slots") or {}
+    session = await conversation_store.get_session(sid) or {}
+    existing_slots = session.get("slots") or {}
 
     # L0 memory: the transcript *before* this turn. Loaded before the append
     # below so the current message is not duplicated in the prompt.
-    history = await conversation_store.get_recent_messages(sid, limit=HISTORY_TURNS)
+    history = await conversation_store.get_recent_messages(
+        sid, limit=memory.HISTORY_MESSAGES
+    )
+
+    # L2 + L3 + L1, assembled most-durable-first (order pinned by tests).
+    profile = await conversation_store.get_profile(client_id) if client_id else {}
+    episodic = await load_episodic_recall()
+    context = memory.memory_context(
+        profile=profile,
+        past_trips=memory.render_past_trips(episodic["trips"], episodic["feedback"]),
+        summary=session.get("summary"),
+    )
 
     # Persist the user turn before calling the LLM (recovery matrix #5): if the
     # browser dies mid-request, their message is not lost.
@@ -560,7 +614,7 @@ async def handle_chat(
     result = None
     try:
         result = await acall_llm(
-            system_prompt=_load_prompt(),
+            system_prompt=memory.compose_system_prompt(_load_prompt(), context),
             user_prompt=user_prompt,
             mock_response=None,  # signal: use _mock_handle instead
             history=history,
@@ -613,7 +667,7 @@ async def handle_chat(
         # API key is configured, in which case the rule-based reply stands.
         try:
             generated = await acall_llm_text(
-                system_prompt=_load_reply_prompt(),
+                system_prompt=memory.compose_system_prompt(_load_reply_prompt(), context),
                 user_prompt=message,
                 history=history,
             )
@@ -626,6 +680,20 @@ async def handle_chat(
         reply = _planning_reply(intent, processed_slots)
 
     await conversation_store.append_message(sid, "assistant", reply)
+
+    # ── L2: promote durable facts learned this turn ──────────────────
+    # Read-modify-write against the profile loaded above. A concurrent write
+    # from another tab could lose an update; acceptable for a single-user app
+    # with no auth, and the merge is commutative for the collection fields.
+    if client_id:
+        updates = memory.profile_updates_from(processed_slots, message)
+        if updates:
+            await conversation_store.merge_profile(
+                client_id, memory.merge_profile(profile, updates)
+            )
+
+    # ── L1: fold newly overflowed turns into the rolling summary ─────
+    await _maybe_update_summary(sid)
 
     return ChatReply(
         session_id=sid,
