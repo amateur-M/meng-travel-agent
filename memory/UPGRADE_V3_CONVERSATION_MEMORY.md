@@ -35,6 +35,12 @@
 
 ## 1. 现状诊断（基于真实代码与环境实测）
 
+> **本节记录的是升级前（2026-10-16 之前）的状态**，用于说明"为什么值得做"。
+> 其中的文件/行号引用**不保证现在仍能解析** —— 例如
+> `services/session_store.py` 已在 P1 随 Redis 一并删除，
+> `agents/conversation.py` 的 `handle_chat` 也已重写。
+> 要看当前实现，请读 §5 与 §7 的产出列。
+
 ### 1.1 Agent 没有对话记忆
 
 | 事实 | 证据 |
@@ -181,7 +187,10 @@ P1.3 把 `/` 改成 Chat 页、表单移到 `/form`，但 `frontend/e2e/full_flo
 | 9 | 从 `/result` 返回 Chat | ✅ 内存态保留 | 需审计"重新规划"不得清空会话（P3 任务） |
 | 10 | 后端重启（PG 在） | ✅ | 会话/消息/槽位全在 PG，恢复 |
 | 11 | **跨天回来（>30min）** | ❌ Redis TTL 30min 即丢 | 迁 PG 后永久保留，正是"正常该有的持久化" |
-| 12 | 生成中的 plan 跨 worker | ❌ `plan_streams` 是**进程内存**（`main.py:179`） | 本轮不修，记为已知限制（见 §6.1） |
+| 12 | 生成中的 plan 跨 worker | ❌ `plan_streams` 是**进程内存**（`main.py` 里的模块级 `plan_streams` dict） | 本轮不修，记为已知限制（见 §6.1） |
+
+> 表中 `✅/❌` 记录的是**升级前**的行为，"本轮设计"列才是目标状态；
+> 逐条落地情况见 §7 的任务表与 §11 的设计修正。
 
 ---
 
@@ -201,6 +210,10 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- 后加的列：CREATE TABLE IF NOT EXISTS 对已存在的表是 no-op，
+-- 所以新增列必须走 ALTER ... ADD COLUMN IF NOT EXISTS
+ALTER TABLE chat_sessions
+    ADD COLUMN IF NOT EXISTS summary_message_count INT NOT NULL DEFAULT 0;  -- L1 覆盖游标
 
 CREATE TABLE IF NOT EXISTS chat_messages (
     id         BIGSERIAL PRIMARY KEY,
