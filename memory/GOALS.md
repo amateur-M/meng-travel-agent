@@ -38,12 +38,12 @@
 - 水合 messages/slots/planRequest；404 → 新建；末尾无回复 → "重新生成"（复用 message_id）
 - 会话列表 UI（新建/切换/重命名/删除）；`storage` 事件跨标签刷新
 - 会话↔行程关联（侧边栏"查看行程"）
-- `npm run check:store` 零依赖 store 检查（19/19）
+- `npm run check:store` 零依赖 store 检查（49/49）
 
 ### Verification
 
 - 后端 `pytest -q`：**364 passed + 2 skipped**（skip 均为 PostgreSQL 未初始化，原因显式打印）
-- 前端：`npm run build` 通过（gzip 131.93 kB）+ `npm run check:store` 19/19
+- 前端：`npm run build` 通过（gzip 131.93 kB）+ `npm run check:store` 49/49
 - 无 key / 无 PG 环境全部走 mock 与优雅降级，无 500
 
 ### Known Gaps

@@ -387,13 +387,13 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - [x] 会话列表 UI（桌面常驻 / 移动端抽屉）：新建、切换、重命名、删除；`storage` 事件
   跨标签刷新列表（#7）
 - [x] 会话↔行程关联：`session_id` 随 `POST /api/plan` 传入，侧边栏可"查看行程"
-- [x] `npm run check:store`：零依赖 store 行为检查（19/19），补 tsc/build 抓不到的状态缺陷
+- [x] `npm run check:store`：零依赖 store 行为检查（49/49），补 tsc/build 抓不到的状态缺陷
 
 ### V3 验证记录
 
 - [x] 后端 `pytest -q`：**364 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
   跳过原因显式打印）
-- [x] 前端 `npm run build` 通过（2264 modules，产物 gzip 131.93 kB）+ `npm run check:store` 19/19
+- [x] 前端 `npm run build` 通过（2264 modules，产物 gzip 131.93 kB）+ `npm run check:store` 49/49
 - [ ] 恢复矩阵中依赖真实库的条目（刷新恢复、跨天、多标签、切换）待 T0.2 后按
   `DEPLOY.md` 手工冒烟清单逐条勾选
 

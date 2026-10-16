@@ -54,8 +54,18 @@ npm run build          # tsc -b + vite build
 npm run check:store    # 零依赖 store 行为检查（问候幂等、client_id、patch 合并等）
 ```
 
-`check:store` 用 vite 自带的 esbuild 把 `chatStore` 打成 CJS 在 node 里断言，
-用来补 `tsc`/`build` 抓不到的状态类缺陷。它测不到 React effect 接线与网络路径，
+`check:store` 用 vite 自带的 esbuild 把 `chatStore` 打成 CJS 在 node 里断言
+（并 stub 掉 `services/chat`），用来补 `tsc`/`build` 抓不到的状态类缺陷。
+当前 49 项，覆盖：
+
+- 纯本地逻辑：问候幂等、`client_id` 稳定落盘、`applyPatch` 合并、`newSession`、`reset`
+- 水合恢复：还原对话与槽位/planRequest/关联行程；同一会话不重复拉取
+- 恢复矩阵 #4：本地指针指向已删会话 → 清指针并新建（不留白屏）
+- 恢复矩阵 #5/#6：末尾无回复 → 置"重新生成"；重试**复用同一 `message_id`**
+  且不会多出一条用户消息
+- 会话切换与删除回退；离线时回退到本地列表缓存
+
+它**测不到** React effect 接线（双问候 bug 就出在那里）与真实网络/数据库路径 ——
 那两类由 §五 的手工冒烟清单覆盖。
 
 ## 二、Docker 一键部署
@@ -124,22 +134,31 @@ push / PR 到 main 时自动触发三阶段：
 | Job | 内容 |
 |-----|------|
 | `backend-test` | `pip install` + `pytest`（无 API key，走 mock 降级路径） |
-| `frontend-build` | `npm ci` + `tsc --noEmit` + `vite build` + `npm run check:store` |
+| `frontend-build` | `npm ci` + `tsc -b`（app + node + **e2e** 三个项目）+ `npm run check:store` + `vite build` |
 | `docker-build` | 依赖前两个 job 通过后构建前后端 Docker 镜像 |
+
+> `tsc -b` 而非 `tsc --noEmit`：根 `tsconfig.json` 自身没有文件（`files: []`），
+> 非 build 模式不会跟进 project references，`tsc --noEmit` 实际什么也不检查。
+> build 模式才会依次检查 `tsconfig.app.json`（src）、`tsconfig.node.json`
+> （vite 配置）、`tsconfig.e2e.json`（Playwright 配置 + `e2e/`）。
+> E2E 用例因此在本机无需浏览器也能被类型检查覆盖。
 
 ## 五、手工冒烟清单（对话记忆与恢复）
 
 Playwright 浏览器未安装时，下列行为只能手工验证。**每条都对应一个真实缺陷或
 恢复场景**，请在数据库初始化后逐条勾选并在本文件记录结果。
 
+标注 `[自动]` 的条目已由 `npm run check:store` 覆盖（客户端逻辑层），手工执行时
+只需确认它们在**真实浏览器 + 真实后端**下的表现一致。
+
 - [ ] 发两轮消息，第二轮能引用第一轮（L0 记忆）
 - [ ] 问一个旅行知识问题，得到实质回答而非固定话术（真回答）
 - [ ] 刷新页面：对话记录与槽位仍在
 - [ ] 关标签页重开：仍回到原会话
 - [ ] 新建第二个会话，切换回来内容不串（画像共享、对话不共享）
-- [ ] 删除当前会话后自动落到新会话（或下一个会话）
-- [ ] 发消息后立刻刷新：能看到自己那条消息，并出现"重新生成"入口
-- [ ] 点"重新生成"：得到回复，且**用户消息没有重复**
+- [ ] 删除当前会话后自动落到新会话（或下一个会话）`[自动：回退逻辑]`
+- [ ] 发消息后立刻刷新：能看到自己那条消息，并出现"重新生成"入口 `[自动：置位逻辑]`
+- [ ] 点"重新生成"：得到回复，且**用户消息没有重复** `[自动：同 message_id 复用]`
 - [ ] 两个标签页开同一会话：互不串写
 - [ ] 20 轮以上长对话：仍能引用早期内容（L1 摘要）
 - [ ] 新会话里 agent 知道上次去过的目的地（L3 情节记忆）

@@ -43,8 +43,11 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install dependencies
         run: npm ci || npm install
-      - name: Type check
-        run: npx tsc --noEmit
+      # `tsc -b` (not `tsc --noEmit`): the root tsconfig has no files of its own,
+      # so a plain `--noEmit` run type-checks nothing at all. Build mode follows
+      # the project references, which now include the E2E/Playwright project.
+      - name: Type check (app + node + e2e)
+        run: npx tsc -b
       - name: Store behaviour checks
         run: npm run check:store
       - name: Build
