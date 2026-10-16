@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { ChatWindow } from "../components/Chat/ChatWindow";
 import { ChatInput } from "../components/Chat/ChatInput";
 import { SlotPanel } from "../components/Chat/SlotPanel";
-import { useChatStore, GREETING } from "../stores/chatStore";
+import { useChatStore } from "../stores/chatStore";
 import { useTripStore } from "../stores/tripStore";
 import { startPlan } from "../services/plan";
 import type { TripPlanRequest } from "../types/trip";
@@ -15,22 +15,14 @@ export function Chat() {
   const slots = useChatStore((s) => s.slots);
   const status = useChatStore((s) => s.status);
   const planRequest = useChatStore((s) => s.planRequest);
-  const initialized = useChatStore((s) => s.initialized);
   const send = useChatStore((s) => s.send);
-  const setInitialized = (v: boolean) => useChatStore.setState({ initialized: v });
+  const ensureGreeting = useChatStore((s) => s.ensureGreeting);
   const [launching, setLaunching] = useState(false);
 
-  // Greet on first visit
+  // Greet on first visit (idempotent — StrictMode mounts effects twice in dev)
   useEffect(() => {
-    if (!initialized && messages.length === 0) {
-      useChatStore.setState((s) => ({
-        messages: [...s.messages, { role: "assistant", content: GREETING }],
-        initialized: true,
-      }));
-      setInitialized(true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    ensureGreeting();
+  }, [ensureGreeting]);
 
   const handleSend = (text: string) => {
     void send(text);

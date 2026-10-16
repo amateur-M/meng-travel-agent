@@ -21,6 +21,7 @@ interface ChatStore {
   planRequest: TripPlanRequestPayload | null;
   initialized: boolean;
   send: (message: string) => Promise<ChatReply | null>;
+  ensureGreeting: () => void;
   reset: () => void;
   applyPatch: (patch: Partial<TripPlanRequestPayload>) => void;
 }
@@ -126,6 +127,23 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       return;
     }
     set({ planRequest: { ...base, ...patch }, status: "ready" });
+  },
+
+  /**
+   * Seed the opening assistant message exactly once.
+   *
+   * The guard reads live store state (not the render closure), so repeated
+   * calls are no-ops — React StrictMode double-invokes mount effects in dev,
+   * which previously appended the greeting twice.
+   */
+  ensureGreeting: () => {
+    if (get().initialized || get().messages.length > 0) {
+      return;
+    }
+    set((state) => ({
+      messages: [{ role: "assistant", content: GREETING }, ...state.messages],
+      initialized: true,
+    }));
   },
 
   reset: () => {
