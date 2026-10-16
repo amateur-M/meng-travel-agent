@@ -418,6 +418,14 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - [x] **新增 `check:plan`**（`frontend/scripts/check-trip-store.cjs`，24 项）：
   `check:store` 此前只覆盖 chatStore，正是这个盲区让上面的缺陷溜过去了。
   现在 npm `check:store` = `check:chat` + `check:plan`
+- [x] **行程就地展示在对话页**（用户要求："行程最好也能在当前对话页面体现，方便后续以
+  对话的方式修改"）。此前生成后跳到 `/result`，行程离开了产生它的那段对话；而调整行程
+  本来就是"说话"这件事，用户得自己走回对话页。
+  现在：对话页自己消费 SSE 流（不再跳转），行程以 `ChatPlanCard` 出现在输入框上方 ——
+  摘要（目的地/日期/天数/预算条）+ 可展开的完整 `Timeline` + "查看完整行程"入口，
+  旁边一句"想调整就接着说"。生成后按钮变"按新的要求重新规划"，重算后卡片就地更新。
+  刷新后由 `last_plan_id` 恢复；切到没有行程的会话会清掉卡片（`clearPlan`），
+  否则会显示上一段对话的行程。
 - [x] **E2E 增加"对话页直接生成行程"用例**：此前 E2E 只走 `/form`，而默认入口是
   `/` 对话页 —— 该用例在修复前必然超时。本机未装浏览器，需 CI 或装 chromium 才能跑。
 - [x] **测试套件不再写开发库**：新增 autouse 隔离夹具 + `real_database` 标记，

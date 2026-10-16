@@ -3,6 +3,7 @@ import { HeartHandshake, ArrowRight, Menu, RefreshCw, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ChatWindow } from "../components/Chat/ChatWindow";
 import { ChatInput } from "../components/Chat/ChatInput";
+import { ChatPlanCard } from "../components/Chat/ChatPlanCard";
 import { SlotPanel } from "../components/Chat/SlotPanel";
 import { SessionList } from "../components/Chat/SessionList";
 import { useChatStore, KEY_LAST } from "../stores/chatStore";
@@ -28,8 +29,16 @@ export function Chat() {
   const renameSession = useChatStore((s) => s.renameSession);
   const removeSession = useChatStore((s) => s.removeSession);
   const regenerate = useChatStore((s) => s.regenerate);
+  const lastPlanId = useChatStore((s) => s.lastPlanId);
+  const tripPlan = useTripStore((s) => s.plan);
+  const tripStatus = useTripStore((s) => s.status);
+  const tripStep = useTripStore((s) => s.currentStep);
+  const tripError = useTripStore((s) => s.error);
+  const resumeExistingPlan = useTripStore((s) => s.resumeExistingPlan);
+  const clearPlan = useTripStore((s) => s.clearPlan);
   const [launching, setLaunching] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [planExpanded, setPlanExpanded] = useState(false);
 
   // Restore this browser's conversation. hydrate() is idempotent (it guards on
   // already-hydrated sessions and on in-flight work), so StrictMode's double
@@ -51,6 +60,28 @@ export function Chat() {
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, [loadSessions]);
+
+  // Show this conversation's itinerary on the chat page itself. Covers both a
+  // trip generated here and one restored after a refresh (the session's
+  // last_plan_id). Switching to a conversation without a trip clears the card,
+  // so one chat never shows another chat's itinerary.
+  useEffect(() => {
+    if (!lastPlanId) {
+      if (useTripStore.getState().plan) {
+        clearPlan();
+      }
+      return;
+    }
+
+    const state = useTripStore.getState();
+    if (state.planId === lastPlanId && state.plan) {
+      return; // already on screen
+    }
+    if (state.status === "planning") {
+      return; // already streaming it
+    }
+    void resumeExistingPlan(lastPlanId);
+  }, [clearPlan, lastPlanId, resumeExistingPlan]);
 
   const handleSend = (text: string) => {
     void send(text);
@@ -91,14 +122,23 @@ export function Chat() {
     try {
       // session_id links the finished trip back to this conversation (V3/P3).
       const { plan_id } = await startPlan(request, sessionId ?? undefined);
-      useTripStore.setState({ planId: plan_id, status: "planning" });
-      navigate(`/loading?plan_id=${plan_id}`);
+      // Record the link so a refresh on this page can bring the itinerary back.
+      useChatStore.setState({ lastPlanId: plan_id });
+      setPlanExpanded(false);
+      // Consume the stream *here* rather than navigating to /loading: the
+      // itinerary then lands in this conversation with the input still below it,
+      // which is what makes conversational tweaks the obvious next step.
+      await useTripStore.getState().resumeExistingPlan(plan_id);
     } catch {
+      // tripStore already exposes the failure through its error state.
+    } finally {
       setLaunching(false);
     }
   };
 
   const ready = status === "ready" && planRequest;
+  const planning = tripStatus === "planning";
+  const hasPlan = Boolean(tripPlan);
 
   return (
     <div className="flex h-screen bg-cream-50 text-ink-900">
@@ -188,6 +228,47 @@ export function Chat() {
           </div>
         )}
 
+        {/* Planning progress, in place (no navigation away from the chat) */}
+        {planning && (
+          <div className="shrink-0 px-4 pt-2 sm:px-6">
+            <div className="mx-auto flex max-w-2xl items-center gap-2.5 rounded-xl border border-blush-200 bg-blush-50 px-3 py-2 text-xs text-blush-700">
+              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-blush-300 border-t-blush-600" />
+              <span className="truncate">{tripStep || "正在为你们规划行程..."}</span>
+            </div>
+          </div>
+        )}
+
+        {tripStatus === "error" && (
+          <div className="shrink-0 px-4 pt-2 sm:px-6">
+            <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              <span className="truncate">行程没有生成成功：{tripError}</span>
+              <button
+                type="button"
+                onClick={() => void handleStartPlan()}
+                disabled={launching}
+                className="inline-flex shrink-0 items-center gap-1 font-semibold text-rose-900 hover:underline disabled:opacity-50"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                重试
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* The itinerary itself, so it can be adjusted by talking right below it */}
+        {tripPlan && !planning && (
+          <div className="shrink-0 px-4 pt-2 sm:px-6">
+            <div className="mx-auto max-w-2xl">
+              <ChatPlanCard
+                plan={tripPlan}
+                expanded={planExpanded}
+                onToggle={() => setPlanExpanded((open) => !open)}
+                onOpenFull={() => navigate(`/result?plan_id=${tripPlan.plan_id}`)}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Slot panel + launch button */}
         {(Object.values(slots).some((v) => v) || ready) && (
           <div className="shrink-0 px-4 pb-2 sm:px-6">
@@ -197,10 +278,14 @@ export function Chat() {
                 <button
                   type="button"
                   onClick={handleStartPlan}
-                  disabled={launching}
+                  disabled={launching || planning}
                   className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blush-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blush-600 disabled:opacity-50"
                 >
-                  {launching ? "正在创建行程..." : "开始规划行程"}
+                  {planning
+                    ? "正在规划行程..."
+                    : hasPlan
+                      ? "按新的要求重新规划"
+                      : "开始规划行程"}
                   <ArrowRight className="h-4 w-4" />
                 </button>
               )}
@@ -209,7 +294,7 @@ export function Chat() {
         )}
 
         {/* Input */}
-        <ChatInput onSend={handleSend} disabled={status === "sending" || launching} />
+        <ChatInput onSend={handleSend} disabled={status === "sending" || launching || planning} />
       </div>
     </div>
   );

@@ -160,6 +160,7 @@ interface TripStore {
   resumeExistingPlan: (planId: string) => Promise<void>;
   loadPlan: (planId: string) => Promise<boolean>;
   resetPlan: () => void;
+  clearPlan: () => void;
 }
 
 function freshSteps(): PlanningStep[] {
@@ -322,6 +323,28 @@ export const useTripStore = create<TripStore>((set, get) => ({
   resetPlan: () => {
     set({
       form: DEFAULT_FORM,
+      plan: null,
+      planId: null,
+      status: "idle",
+      currentStep: "",
+      progress: freshSteps(),
+      error: null,
+      streamingDays: [],
+      budgetAlert: null,
+      weatherSwaps: [],
+      coupleMessages: [],
+    });
+  },
+
+  /**
+   * Drop the loaded itinerary but keep the form.
+   *
+   * The chat page renders whatever plan is in this store, so switching to a
+   * conversation without a trip must clear it — otherwise the previous
+   * conversation's itinerary stays on screen next to the wrong chat.
+   */
+  clearPlan: () => {
+    set({
       plan: null,
       planId: null,
       status: "idle",

@@ -30,13 +30,13 @@ test.describe("对话页（默认入口）", () => {
 
   /**
    * 回归守卫：对话页自己 POST 创建行程（只为把 session_id 一并传过去，好让生成的
-   * 行程关联回会话），然后跳到 /loading?plan_id=...。而 Loading 页过去只在
-   * status === "idle" 时才去消费 SSE 流 —— 于是"计划已创建，却没有任何人消费它"，
-   * 页面永远停在加载态，数据库里躺着一条用户看不到的行程。
+   * 行程关联回会话），而 Loading 页过去只在 status === "idle" 时才去消费 SSE 流 ——
+   * 于是"计划已创建，却没有任何人消费它"，页面永远停在加载态，数据库里躺着一条
+   * 用户看不到的行程（修复前这条用例必然超时）。
    *
-   * 这条用例是 e2e 里唯一走"对话 → 生成"路径的，(修复前) 它会一直等到超时。
+   * 现在行程直接在对话页里出现、不再跳走，输入框就在它下面 —— 想改接着说就行。
    */
-  test("对话里说清需求后能生成行程并看到结果页", async ({ page }) => {
+  test("对话里说清需求后，行程直接出现在当前对话页", async ({ page }) => {
     await page.goto("/");
 
     // 规则解析（CI 无 API key）也能理解中文数字："三天" + "预算5000元"
@@ -47,9 +47,35 @@ test.describe("对话页（默认入口）", () => {
     await expect(launch).toBeVisible({ timeout: 30_000 });
     await launch.click();
 
-    // 关键断言：必须真正走到结果页，而不是停在 /loading
-    await expect(page).toHaveURL(/\/result/, { timeout: 60_000 });
+    // 关键断言：不跳转，行程卡片出现在对话页本身
+    await expect(page).toHaveURL("/");
+    await expect(page.getByTestId("chat-plan-card")).toBeVisible({ timeout: 60_000 });
     await expect(page.getByText("天行程").first()).toBeVisible();
+
+    // 就地展开行程，并保留通往完整结果页的入口
+    await page.getByTestId("chat-plan-toggle").click();
+    await expect(page.getByRole("button", { name: "收起行程" })).toBeVisible();
+
+    await page.getByRole("button", { name: "查看完整行程" }).click();
+    await expect(page).toHaveURL(/\/result/, { timeout: 10_000 });
+  });
+
+  test("生成后可以直接在对话里调整，卡片随之更新", async ({ page }) => {
+    await page.goto("/");
+    await page.getByPlaceholder("说说你们的旅行想法").fill("想去大理玩三天，预算5000元");
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "开始规划行程" }).click();
+    await expect(page.getByTestId("chat-plan-card")).toBeVisible({ timeout: 60_000 });
+
+    // 以对话方式修改预算，按钮应变为"重新规划"，重算后卡片反映新预算
+    await page.getByPlaceholder("说说你们的旅行想法").fill("预算加到八千");
+    await page.keyboard.press("Enter");
+
+    const replan = page.getByRole("button", { name: "按新的要求重新规划" });
+    await expect(replan).toBeVisible({ timeout: 30_000 });
+    await replan.click();
+
+    await expect(page.getByTestId("chat-plan-card")).toContainText("8,000", { timeout: 60_000 });
   });
 });
 

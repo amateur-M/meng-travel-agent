@@ -206,6 +206,22 @@ const state = () => useTripStore.getState();
   check("weather swap recorded", state().weatherSwaps.length === 1);
   check("couple message recorded", state().coupleMessages.length === 1);
 
+  section("clearPlan: switching to a conversation with no trip drops the itinerary");
+  reset();
+  stubs.fetchPlan = async (planId) => fakePlan(planId);
+  await state().resumeExistingPlan("p-previous");
+  check("plan loaded", state().plan?.plan_id === "p-previous");
+
+  state().clearPlan();
+
+  check("plan is gone", state().plan === null && state().planId === null);
+  check("status is idle", state().status === "idle");
+  check(
+    "the form survives, so the user can plan again",
+    state().form.destination === "大理",
+    state().form.destination,
+  );
+
   console.log(
     `\n${failures === 0 ? "PASS" : "FAIL"}: ${checks - failures}/${checks} checks passed`,
   );
