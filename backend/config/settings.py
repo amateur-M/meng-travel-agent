@@ -80,8 +80,9 @@ class Settings(BaseSettings):
     # PostgreSQL (P0.1 行程持久化)
     pg_dsn: str = "postgresql://coupletrip:coupletrip_dev@localhost:5432/coupletrip"
 
-    # Redis (P1.1 对话会话存储)
-    redis_url: str = "redis://localhost:6379/0"
+    # 对话会话存储已迁至 PostgreSQL（V3/P1），Redis 依赖随之移除。
+    # 若将来以多 worker 部署，需要为 SSE 事件扇出与共享限流计数重新引入
+    # broker —— 届时它是为流式与限流服务的，与聊天记忆无关。
 
     # P3.1 鉴权
     auth_enabled: bool = False

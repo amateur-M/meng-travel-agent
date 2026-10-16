@@ -17,18 +17,6 @@ services:
       start_period: 5s
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 3s
-    restart: unless-stopped
-
   backend:
     build:
       context: ./backend
@@ -40,7 +28,6 @@ services:
     environment:
       - DEFAULT_LLM_PROVIDER=${DEFAULT_LLM_PROVIDER:-openai}
       - PG_DSN=postgresql://coupletrip:${POSTGRES_PASSWORD:-coupletrip_dev}@db:5432/coupletrip
-      - REDIS_URL=redis://redis:6379/0
       - AUTH_ENABLED=${AUTH_ENABLED:-false}
       - API_KEYS=${API_KEYS:-}
       - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-false}
@@ -50,8 +37,6 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
     depends_on:
       db:
-        condition: service_healthy
-      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
