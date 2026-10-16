@@ -5,13 +5,17 @@ WITHOUT LLM keys (conversation.py falls back to _mock_handle).
 """
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 from agents.conversation import (
     handle_chat,
     postprocess_slots,
+    postprocess_patch,
     _normalise_budget,
     _normalise_date,
+    _parse_day_shift,
+    _parse_day_count,
+    _looks_like_modification,
     _check_ready,
     _mock_handle,
 )
@@ -169,3 +173,236 @@ class TestHandleChatIntegration:
         assert reply.ready is False
         # destination should not be set for a question
         assert reply.slots.destination is None
+
+
+# ── P1.2 incremental modification ────────────────────────────────────
+
+COMPLETE_SLOTS = {
+    "destination": "大理",
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-03",
+    "budget": 5000.0,
+}
+
+
+class TestDayShiftParsing:
+    """Unit coverage for the relative day arithmetic behind "再加一天"."""
+
+    def test_signed_shift(self):
+        assert _parse_day_shift("+1天") == 1
+        assert _parse_day_shift("-1天") == -1
+
+    def test_verbal_shift(self):
+        assert _parse_day_shift("再加一天") == 1
+        assert _parse_day_shift("再多两天") == 2
+        assert _parse_day_shift("延长三天") == 3
+        assert _parse_day_shift("提前一天") == -1
+
+    def test_bare_duration_is_not_a_shift(self):
+        assert _parse_day_shift("3天") is None
+        assert _parse_day_count("3天") == 3
+        assert _parse_day_count("两天") == 2
+
+    def test_non_day_text(self):
+        assert _parse_day_shift("下周末") is None
+        assert _parse_day_count("大理") is None
+
+
+class TestPostprocessPatch:
+
+    def test_budget_normalisation(self):
+        patch = postprocess_patch({"budget": "8千"}, COMPLETE_SLOTS)
+        assert patch["budget"] == 8000.0
+
+    def test_budget_numeric_passthrough(self):
+        assert postprocess_patch({"budget": 8000}, COMPLETE_SLOTS)["budget"] == 8000.0
+
+    def test_add_one_day_shifts_end_date(self):
+        patch = postprocess_patch({"end_date": "再加一天"}, COMPLETE_SLOTS)
+        assert patch["end_date"] == "2026-09-04"
+
+    def test_day_shift_crosses_month_boundary(self):
+        existing = {**COMPLETE_SLOTS, "end_date": "2026-09-30"}
+        assert postprocess_patch({"end_date": "再加一天"}, existing)["end_date"] == "2026-10-01"
+
+    def test_negative_shift_shortens_trip(self):
+        patch = postprocess_patch({"end_date": "提前一天"}, COMPLETE_SLOTS)
+        assert patch["end_date"] == "2026-09-02"
+
+    def test_bare_duration_reanchors_on_start_date(self):
+        patch = postprocess_patch({"end_date": "5天"}, COMPLETE_SLOTS)
+        assert patch["end_date"] == "2026-09-05"
+
+    def test_iso_date_passthrough(self):
+        assert postprocess_patch({"end_date": "2026-09-05"}, COMPLETE_SLOTS)["end_date"] == "2026-09-05"
+
+    def test_preferences_string_split(self):
+        patch = postprocess_patch({"preferences": "浪漫、美食"}, COMPLETE_SLOTS)
+        assert patch["preferences"] == ["浪漫", "美食"]
+
+    def test_unknown_keys_are_dropped(self):
+        assert postprocess_patch({"notes": "x"}, COMPLETE_SLOTS) == {}
+
+    def test_null_values_dropped(self):
+        assert postprocess_patch({"budget": None, "end_date": ""}, COMPLETE_SLOTS) == {}
+
+    def test_non_dict_patch(self):
+        assert postprocess_patch(None, COMPLETE_SLOTS) == {}
+        assert postprocess_patch("预算加到8千", COMPLETE_SLOTS) == {}
+
+
+class TestMockModify:
+    """Acceptance: "预算加到8千" → budget patch; "再加一天" → end_date 推移."""
+
+    def test_budget_increase(self):
+        result = _mock_handle("预算加到8千", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"]["budget"] == 8000.0
+        assert result["slots"]["budget"] == 8000.0
+        # untouched slots survive
+        assert result["slots"]["destination"] == "大理"
+        assert result["slots"]["end_date"] == "2026-09-03"
+
+    def test_add_one_day(self):
+        result = _mock_handle("再加一天", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"]["end_date"] == "2026-09-04"
+        assert result["slots"]["end_date"] == "2026-09-04"
+        assert result["slots"]["start_date"] == "2026-09-01"
+
+    def test_change_destination(self):
+        result = _mock_handle("换成杭州", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"]["destination"] == "杭州"
+        assert result["slots"]["destination"] == "杭州"
+
+    def test_modification_after_greeting_prefix(self):
+        result = _mock_handle("你好，预算加到8千", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"]["budget"] == 8000.0
+
+    def test_question_style_modification(self):
+        result = _mock_handle("能不能再加一天？", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"]["end_date"] == "2026-09-04"
+
+    def test_unrecognised_modification_asks(self):
+        result = _mock_handle("改一下", COMPLETE_SLOTS)
+        assert result["intent"] == "modify_plan"
+        assert result["modify_patch"] is None
+        assert "预算" in result["reply"]
+
+    def test_incomplete_session_is_not_a_modification(self):
+        """Without a complete plan, the same words are a fresh planning turn."""
+        result = _mock_handle("预算加到8千", {})
+        assert result["intent"] == "planning_intent"
+
+    def test_ready_session_with_new_request_still_plans(self):
+        result = _mock_handle("想去三亚，预算8000元", COMPLETE_SLOTS)
+        assert result["intent"] == "planning_ready"
+
+
+class TestLooksLikeModification:
+
+    def test_signals(self):
+        assert _looks_like_modification("预算加到8千") is True
+        assert _looks_like_modification("再加一天") is True
+        assert _looks_like_modification("换成杭州") is True
+        assert _looks_like_modification("预算5000") is True
+
+    def test_plain_talk(self):
+        assert _looks_like_modification("你好") is False
+        assert _looks_like_modification("大理有什么好玩的") is False
+
+
+class TestHandleChatModify:
+    """Integration: the patch is merged into session slots and ready is reset."""
+
+    @pytest.mark.asyncio
+    async def test_budget_patch_merged_and_ready_reset(self):
+        with patch(
+            "services.session_store.session_store.get_slots",
+            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+        ):
+            reply = await handle_chat("预算加到8千", "sess-modify-budget")
+
+        assert reply.intent == "modify_plan"
+        assert reply.ready is False
+        assert reply.plan_request is None
+        assert reply.modify_patch is not None
+        assert reply.modify_patch.budget == 8000.0
+        assert reply.slots.budget == 8000.0
+        assert reply.slots.destination == "大理"
+
+    @pytest.mark.asyncio
+    async def test_add_one_day_patch_merged(self):
+        with patch(
+            "services.session_store.session_store.get_slots",
+            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+        ):
+            reply = await handle_chat("再加一天", "sess-modify-days")
+
+        assert reply.intent == "modify_plan"
+        assert reply.ready is False
+        assert reply.modify_patch is not None
+        assert reply.modify_patch.end_date == "2026-09-04"
+        assert reply.slots.end_date == "2026-09-04"
+
+    @pytest.mark.asyncio
+    async def test_llm_patch_merged_into_slots(self):
+        """The LLM path merges its modify_patch the same way the mock does."""
+        llm_reply = {
+            "intent": "modify_plan",
+            "reply": "好的，预算调到8千～",
+            "slots": {},
+            "modify_patch": {"budget": "8千"},
+        }
+        with patch(
+            "services.session_store.session_store.get_slots",
+            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+        ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
+            reply = await handle_chat("预算加到8千", "sess-llm")
+
+        assert reply.intent == "modify_plan"
+        assert reply.ready is False
+        assert reply.modify_patch is not None
+        assert reply.modify_patch.budget == 8000.0
+        assert reply.slots.budget == 8000.0
+        assert reply.slots.destination == "大理"
+
+    @pytest.mark.asyncio
+    async def test_llm_day_shift_patch(self):
+        llm_reply = {
+            "intent": "modify_plan",
+            "reply": "好的，多留一天～",
+            "slots": {},
+            "modify_patch": {"end_date": "再加一天"},
+        }
+        with patch(
+            "services.session_store.session_store.get_slots",
+            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+        ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
+            reply = await handle_chat("再加一天", "sess-llm-days")
+
+        assert reply.modify_patch is not None
+        assert reply.modify_patch.end_date == "2026-09-04"
+
+    @pytest.mark.asyncio
+    async def test_modify_without_patch_keeps_slots(self):
+        llm_reply = {
+            "intent": "modify_plan",
+            "reply": "想调整哪一项？",
+            "slots": {},
+            "modify_patch": None,
+        }
+        with patch(
+            "services.session_store.session_store.get_slots",
+            new=AsyncMock(return_value=dict(COMPLETE_SLOTS)),
+        ), patch("agents.conversation.acall_llm", new=AsyncMock(return_value=llm_reply)):
+            reply = await handle_chat("改一下", "sess-no-patch")
+
+        assert reply.intent == "modify_plan"
+        assert reply.modify_patch is None
+        assert reply.ready is False
+        assert reply.slots.destination == "大理"
+        assert reply.slots.budget == 5000.0
