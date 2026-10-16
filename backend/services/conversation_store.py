@@ -463,7 +463,7 @@ class ConversationStore:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
-                        SELECT role, content, created_at
+                        SELECT role, content, created_at, message_id
                         FROM chat_messages
                         WHERE session_id = %s
                         ORDER BY id
@@ -473,7 +473,14 @@ class ConversationStore:
                     )
                     rows = cur.fetchall()
             return [
-                {"role": row[0], "content": row[1], "created_at": _iso(row[2])}
+                {
+                    "role": row[0],
+                    "content": row[1],
+                    "created_at": _iso(row[2]),
+                    # Exposed so the client can replay a turn idempotently after
+                    # a refresh (recovery #5: retry a message that got no reply).
+                    "message_id": row[3],
+                }
                 for row in rows
             ]
         except Exception as exc:

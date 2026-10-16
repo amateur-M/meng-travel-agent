@@ -103,6 +103,10 @@ class ChatMessageItem(BaseModel):
     role: str
     content: str
     created_at: Optional[str] = None
+    message_id: Optional[str] = Field(
+        None,
+        description="客户端轮次 id；客户端重试未获回复的消息时复用它以保证幂等",
+    )
 
 
 class MessageListResponse(BaseModel):
