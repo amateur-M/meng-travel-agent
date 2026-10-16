@@ -28,7 +28,7 @@
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
 >
 > **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
-> 后端 **387 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
+> 后端 **391 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
 > 期间发现两处必须记录的设计修正，见 §11。
 
 ---
@@ -406,7 +406,7 @@ prompt 能说出"上次去过哪" ✅。
 |---------|------|------|------|
 | T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS/BOOTSTRAP 记 V3 | ✅ | memory/*.md |
 | T4.2 | 手工冒烟清单（§8）执行并记录 | ⏸ 待 T0.2 | memory/DEPLOY.md |
-| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 364 passed + 2 skipped；build 通过；49/49 |
+| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 391 passed + 2 skipped；build 通过；49/49 |
 
 ---
 
@@ -443,7 +443,7 @@ prompt 能说出"上次去过哪" ✅。
 | L2 画像写错且长期污染后续对话 | 只增不删 + 冲突保留新旧两值并在 prompt 标注 + `PATCH /api/profile` 人工纠正 |
 | L3 召回让 prompt 变长 | 只取最近 5 个 plan + 反馈聚合，硬上限 |
 | 移除 Redis 会动 compose 与依赖 | 单独一个提交便于回滚；Redis 数据本就 TTL 30min、可丢弃；触发条件写入文档 |
-| `ConversationStore` 异步化与同步 `PlanStore` 风格不一致 | 新层必须异步（P0.2 的教训）；`PlanStore` 的同步-in-async 列为后续可选清理 |
+| `ConversationStore` 异步化与同步 `PlanStore` 风格不一致 | 新层必须异步（P0.2 的教训）；**已在收尾时一并修掉 PlanStore**：原先它在 async 端点里被直接调用，PG 不可达时会把事件循环冻住整个 5s 池超时；现全部经 `asyncio.to_thread`，并由 `tests/test_event_loop.py` 用循环延迟度量守住 |
 | 本地 PG 凭据不明 | T0.2 先做连通性确认，再决定"建角色"还是"改 DSN" |
 | 自动标题质量 | 先用"首条用户消息截断 20 字"，不额外花 LLM 调用 |
 | 多 worker 下 in-flight SSE 仍会断 | 本轮不修，记录为已知限制（§6.1 触发条件） |

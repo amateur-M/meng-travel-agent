@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **387 passed + 2 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **391 passed + 2 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49。
 
 **V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
 起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：

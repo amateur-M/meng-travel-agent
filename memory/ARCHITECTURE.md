@@ -177,11 +177,13 @@ user_profiles(client_id PK, user_id, profile JSONB, updated_at)
 `message_id` 唯一约束是幂等的支点：客户端重试同一个 `message_id` 时
 `ON CONFLICT DO NOTHING`，不会把用户那句话写两遍。
 
-**存储层为何是"同步驱动 + 线程卸载"**：`services/conversation_store.py` 用同步
-`psycopg` 连接池，所有 DB 调用经 `asyncio.to_thread` 卸载。psycopg 的**异步**模式
-在 Windows 默认的 `ProactorEventLoop` 上直接报 `InterfaceError`，而 Windows 是主要
-开发平台。P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台一致。
-（注：`PlanStore` 仍是同步池在 async 端点里直接调用，属遗留不一致。）
+**存储层为何是"同步驱动 + 线程卸载"**：`services/conversation_store.py` 与
+`services/storage.py`（`PlanStore`）都用同步 `psycopg` 连接池，**所有** DB 调用
+经 `asyncio.to_thread` 卸载。psycopg 的**异步**模式在 Windows 默认的
+`ProactorEventLoop` 上直接报 `InterfaceError`，而 Windows 是主要开发平台。
+P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台一致。
+（由 `tests/test_event_loop.py` 以事件循环延迟度量守住：任一存储调用回到循环上，
+测试立即失败。）
 
 ---
 

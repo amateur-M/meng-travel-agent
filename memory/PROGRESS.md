@@ -391,7 +391,7 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**387 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
+- [x] 后端 `pytest -q`：**391 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
   跳过原因显式打印）
 - [x] **不依赖数据库也能验证完整对话链路**：`tests/test_conversation_e2e.py` 用
   `InMemoryConversationStore`（并断言它实现了真实 store 的每个公开方法，防止假实现腐化）
@@ -406,6 +406,11 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
   schema（按形状比对，占位符名不敏感），并校验前端依赖的请求/响应字段仍在。
   写这条测试时发现 `ChatReply`/`SessionDetail`/`SessionListResponse`/`MessageListResponse`
   已定义却从未挂成 `response_model`（等于死代码、响应结构无文档），已一并接线
+- [x] **`PlanStore` 不再阻塞事件循环**：此前它在 async 端点里被直接调用（V2 P0.2
+  只改到了 `ConversationStore`）。实测一次存储调用会让事件循环停摆 0.39s／0.4s，
+  而 PG 不可达时这个数字就是 5s 池超时 —— 期间**所有**请求都被冻住。现全部经
+  `asyncio.to_thread`，新增 `tests/test_event_loop.py` 用**事件循环延迟**度量守住
+  四条路径（计划写入/读取/历史/反馈）；该测试在修复前确实失败（0.39s < 阈值 0.15s 不成立）
 - [ ] 恢复矩阵中依赖**真实数据库**的条目（刷新恢复、跨天、多标签、切换、真实 PG 往返）
   待 T0.2 后按 `DEPLOY.md` 手工冒烟清单逐条勾选
 

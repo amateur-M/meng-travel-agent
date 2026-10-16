@@ -395,7 +395,9 @@ async def _run_graph_to_queue(initial_state: dict, plan_id: str, queue: asyncio.
                     error = update.get("error", "")
                     if error:
                         await queue.put(_sse("error", {"phase": phase, "message": error}))
-                        plan_store.update(plan_id, {"error": error}, status="error")
+                        await asyncio.to_thread(
+                            plan_store.update, plan_id, {"error": error}, status="error"
+                        )
                         await queue.put(_STREAM_SENTINEL)
                         return
                     for event in _emit_node_events(phase, update):
@@ -414,14 +416,18 @@ async def _run_graph_to_queue(initial_state: dict, plan_id: str, queue: asyncio.
         degraded = bool(warnings)
         complete_payload = {**payload_base, "warnings": warnings, "degraded": degraded} if warnings else {**payload_base, "degraded": degraded}
 
-        plan_store.update(plan_id, complete_payload, status="completed")
+        await asyncio.to_thread(
+            plan_store.update, plan_id, complete_payload, status="completed"
+        )
 
         await queue.put(_sse("complete", complete_payload))
         await queue.put(_STREAM_SENTINEL)
 
     except Exception as exc:
         logger.exception("Unhandled error in graph background task")
-        plan_store.update(plan_id, {"error": str(exc)}, status="error")
+        await asyncio.to_thread(
+            plan_store.update, plan_id, {"error": str(exc)}, status="error"
+        )
         await queue.put(_sse("error", {"phase": "unknown", "message": str(exc)}))
         await queue.put(_STREAM_SENTINEL)
 
@@ -446,7 +452,9 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
                     error = update.get("error", "")
                     if error:
                         yield _sse("error", {"phase": phase, "message": error})
-                        plan_store.update(plan_id, {"error": error}, status="error")
+                        await asyncio.to_thread(
+                            plan_store.update, plan_id, {"error": error}, status="error"
+                        )
                         return
                     for event in _emit_node_events(phase, update):
                         yield event
@@ -464,12 +472,16 @@ async def _stream_graph(initial_state: dict, plan_id: str) -> AsyncGenerator[str
         degraded = bool(warnings)
         complete_payload = {**payload_base, "warnings": warnings, "degraded": degraded} if warnings else {**payload_base, "degraded": degraded}
 
-        plan_store.update(plan_id, complete_payload, status="completed")
+        await asyncio.to_thread(
+            plan_store.update, plan_id, complete_payload, status="completed"
+        )
         yield _sse("complete", complete_payload)
 
     except Exception as exc:
         logger.exception("Unhandled error in SSE stream")
-        plan_store.update(plan_id, {"error": str(exc)}, status="error")
+        await asyncio.to_thread(
+            plan_store.update, plan_id, {"error": str(exc)}, status="error"
+        )
         yield _sse("error", {"phase": "unknown", "message": str(exc)})
 
 
@@ -491,7 +503,9 @@ async def create_plan(request: Request, body: TripPlanRequest, _: None = Depends
     # Drop the session link from the stored request body: it is conversation
     # bookkeeping, not part of the trip itself.
     request_dict.pop("session_id", None)
-    plan_store.save(plan_id, request_dict, status="processing")
+    # Offload: plan_store uses a sync pool, so calling it here would freeze the
+    # event loop (and every other request) for the duration of the write.
+    await asyncio.to_thread(plan_store.save, plan_id, request_dict, status="processing")
 
     # V3/P1: remember on the session which trip it produced, so the sidebar can
     # offer "查看行程" after a refresh.
@@ -535,7 +549,7 @@ async def stream_plan(plan_id: str, _: None = Depends(verify_api_key)):
     directly. Otherwise, streams live events from the in-memory queue.
     """
     # Check if plan already completed — replay from DB
-    record = plan_store.get(plan_id)
+    record = await asyncio.to_thread(plan_store.get, plan_id)
     if record and record.get("status") == "completed" and record.get("response"):
         response = record["response"]
         if "plan_id" not in response:
@@ -592,7 +606,7 @@ async def list_plans(
 ):
     """Return a paginated list of plan summaries, newest first."""
     offset = (page - 1) * size
-    items = plan_store.list(limit=size, offset=offset)
+    items = await asyncio.to_thread(plan_store.list, limit=size, offset=offset)
     return {
         "page": page,
         "size": size,
@@ -603,7 +617,7 @@ async def list_plans(
 @app.get("/api/plan/{plan_id}")
 async def get_plan(plan_id: str, _: None = Depends(verify_api_key)):
     """Return a completed plan by ID (for refresh recovery)."""
-    record = plan_store.get(plan_id)
+    record = await asyncio.to_thread(plan_store.get, plan_id)
     if record is None:
         return JSONResponse(status_code=404, content={"detail": "Plan not found"})
     return record
@@ -612,7 +626,7 @@ async def get_plan(plan_id: str, _: None = Depends(verify_api_key)):
 @app.delete("/api/plan/{plan_id}")
 async def delete_plan(plan_id: str, _: None = Depends(verify_api_key)):
     """Delete a plan record."""
-    deleted = plan_store.delete(plan_id)
+    deleted = await asyncio.to_thread(plan_store.delete, plan_id)
     if not deleted:
         return JSONResponse(status_code=404, content={"detail": "Plan not found"})
     return {"deleted": True, "plan_id": plan_id}
@@ -633,7 +647,9 @@ async def plan_feedback(plan_id: str, activity_name: str, thumbs: str, _: None =
     if not activity_name:
         return JSONResponse(status_code=400, content={"detail": "activity_name required"})
 
-    success = plan_store.save_feedback(plan_id, activity_name, thumbs)
+    success = await asyncio.to_thread(
+        plan_store.save_feedback, plan_id, activity_name, thumbs
+    )
     return {"recorded": success, "plan_id": plan_id, "activity_name": activity_name, "thumbs": thumbs}
 
 
