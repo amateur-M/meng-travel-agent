@@ -7,18 +7,27 @@ import settings` call sites — and conftest monkeypatch paths — remain
 unchanged.
 """
 
-from typing import List
+import json
+from typing import Annotated, List
 
 from pydantic import field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 def _split_csv(value: str | List[str]) -> List[str]:
-    """Accept both JSON lists and comma-separated strings for env compat."""
+    """Accept both JSON arrays and comma-separated strings for env compat."""
     if isinstance(value, list):
         return value
     if not value or not value.strip():
         return []
+    stripped = value.strip()
+    if stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, list):
+                return [str(item).strip() for item in parsed if str(item).strip()]
+        except json.JSONDecodeError:
+            pass
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
@@ -76,7 +85,8 @@ class Settings(BaseSettings):
 
     # P3.1 鉴权
     auth_enabled: bool = False
-    api_keys: List[str] = []
+    # NoDecode: 跳过 pydantic-settings 对 List 字段的 JSON 预解码，交给 _split_csv 处理逗号分隔/JSON 数组
+    api_keys: Annotated[List[str], NoDecode] = []
 
     # P3.1 限流
     rate_limit_enabled: bool = False
@@ -87,7 +97,7 @@ class Settings(BaseSettings):
     json_logs: bool = True
 
     # P3.3 CORS origins（逗号分隔）；默认开发环境，生产从 env 注入
-    cors_origins: List[str] = ["http://localhost:5173"]
+    cors_origins: Annotated[List[str], NoDecode] = ["http://localhost:5173"]
 
     # Allow comma-separated strings from env for list fields
     @field_validator("api_keys", mode="before")
