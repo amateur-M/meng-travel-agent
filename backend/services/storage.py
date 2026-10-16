@@ -71,8 +71,8 @@ def _get_pool() -> Optional[ConnectionPool]:
         logger.info("PlanStore: PostgreSQL pool initialised")
         return pool
     except Exception as exc:
-        _pool_error = f"{type(exc).__name__}: {exc}"
-        logger.warning("PlanStore: PostgreSQL unavailable — persistence disabled: %s", exc)
+        _pool_error = _diagnose(exc)
+        logger.warning("PlanStore: PostgreSQL unavailable — persistence disabled: %s", _pool_error)
         if pool is not None:
             try:
                 pool.close()
@@ -80,6 +80,21 @@ def _get_pool() -> Optional[ConnectionPool]:
                 pass
         _pool_unavailable = True
         return None
+
+
+def _diagnose(pool_exc: Exception) -> str:
+    """Explain *why* the pool failed, not just that it timed out.
+
+    ``pool.open(wait=True)`` reports a bare ``PoolTimeout``; the actionable
+    cause (bad credentials, missing database, wrong host) is only visible from
+    a direct connect attempt.
+    """
+    try:
+        conn = psycopg.connect(settings.pg_dsn, connect_timeout=5)
+        conn.close()
+    except Exception as root:
+        return f"{type(root).__name__}: {root}"
+    return f"{type(pool_exc).__name__}: {pool_exc}"
 
 
 def _init_ddl(conn) -> None:
