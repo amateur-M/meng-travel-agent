@@ -11,6 +11,10 @@ import uuid
 
 import pytest
 
+# These tests exist to verify the real database, so they opt out of the
+# suite-wide isolation fixture in tests/conftest.py.
+pytestmark = pytest.mark.real_database
+
 from services.conversation_store import conversation_store
 
 

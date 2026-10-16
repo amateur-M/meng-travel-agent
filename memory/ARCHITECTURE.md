@@ -215,6 +215,7 @@ P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台�
 | `DELETE` | `/api/chat/sessions/{id}` | 删除会话（消息级联删除） |
 | `GET` | `/api/profile` | L2 跨会话画像读取 |
 | `PATCH` | `/api/profile` | L2 画像手工纠正（沿用同一套合并规则，不抹掉已学到的） |
+| `DELETE` | `/api/profile` | 遗忘该浏览器的 L2 画像（"忘记我"；**不**删对话，对话由用户逐个删除） |
 | `GET` | `/api/chat/recall` | L3 情节记忆预览（历史行程 + 活动反馈） |
 
 **POST /api/plan 请求体**：

@@ -32,3 +32,11 @@ dev = [
 [build-system]
 requires = ["setuptools>=75.0"]
 build-backend = "setuptools.build_meta"
+
+[tool.pytest.ini_options]
+# Registered so the marker is documented and does not warn. Tests carrying it
+# opt out of the suite-wide database isolation fixture and talk to a real
+# PostgreSQL (see tests/conftest.py).
+markers = [
+    "real_database: requires a live PostgreSQL and opts out of the suite-wide isolation fixture",
+]

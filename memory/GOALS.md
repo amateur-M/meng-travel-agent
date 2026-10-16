@@ -42,7 +42,13 @@
 
 ### Verification
 
-- 后端 `pytest -q`：**409 passed + 2 skipped**（skip 均为 PostgreSQL 未初始化，原因显式打印）
+- 后端 `pytest -q`：**422 passed + 1 skipped**（唯一 skip 是需 `QWX_TEST_REAL_API=1` 的真实天气 API 测试；
+  无数据库环境下为 420 passed + 3 skipped —— 两个 PG 往返测试会**显式打印原因**后跳过）
+- **真实 PostgreSQL 往返已通过**：`test_conversation_store_pg.py` + `test_storage_pg.py` 不再 skip
+- **测试套件不再写开发库**：新增 autouse 隔离夹具 + `real_database` 标记；跑完五个表全为 0 行
+  （此前每跑一次会留下 20+ 条真实记录）
+- **对运行中服务器 + 真实库的 24 项端到端冒烟全绿**：`backend/scripts/smoke_e2e.py`
+  （真实 HTTP、真实 lifespan、SSE 计划管线、会话↔行程关联、级联删除）
 - 前端：`npm run build` 通过（gzip 131.93 kB）+ `npm run check:store` 49/49
 - 无 key / 无 PG 环境全部走 mock 与优雅降级，无 500
 

@@ -230,6 +230,24 @@ class TestProfileEndpoints:
         assert response.json()["profile"] == {"origin": "北京"}
         merged.assert_not_awaited()
 
+    def test_delete_profile_forgets_the_client(self, client):
+        """"Forget me" removes the L2 profile only, never the conversations."""
+        with patch(f"{SESSIONS}.delete_profile", new=AsyncMock(return_value=True)) as forget:
+            response = client.delete("/api/profile?client_id=c1")
+
+        assert response.status_code == 200
+        assert response.json() == {"client_id": "c1", "deleted": True}
+        forget.assert_awaited_once_with("c1")
+
+    def test_delete_profile_reports_when_there_was_nothing(self, client):
+        with patch(f"{SESSIONS}.delete_profile", new=AsyncMock(return_value=False)):
+            response = client.delete("/api/profile?client_id=unknown")
+        assert response.status_code == 200
+        assert response.json()["deleted"] is False
+
+    def test_delete_profile_requires_a_client_id(self, client):
+        assert client.delete("/api/profile").status_code == 422
+
     def test_patch_rejects_negative_budget(self, client):
         response = client.patch(
             "/api/profile", json={"client_id": "c1", "patch": {"budget": -5}}

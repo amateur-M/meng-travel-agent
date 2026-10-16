@@ -17,18 +17,18 @@
 
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
-| **P0 环境与地基** | 修复静默降级，让持久化真实生效 | 🔄 | 4/5（T0.2 待你跑初始化脚本） |
+| **P0 环境与地基** | 修复静默降级，让持久化真实生效 | ✅ | 5/5 |
 | **P1 短期记忆与真对话（L0）** ⭐ | 多轮上下文 + 真回答 + 会话落库 | ✅ | 6/6 |
 | **P2 长期记忆（L1/L2/L3）** | 滚动摘要 + 跨会话画像 + 情节召回 | ✅ | 5/5 |
 | **P3 对话恢复与前端** ⭐ | 刷新/中断/多标签恢复 + 会话切换 | ✅ | 7/7 |
-| **P4 收尾** | 文档、冒烟、回归 | 🔄 | 进行中 |
+| **P4 收尾** | 文档、冒烟、回归 | ✅ | 3/3（浏览器专属项见 §11.5） |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 `tsc -b && vite build` 通过」。
 > 本机未安装 Playwright 浏览器，E2E 不作为本轮的验收手段（见 §7）。
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
 >
 > **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
-> 后端 **409 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
+> 后端 **422 passed + 1 skipped**，前端 build 通过 + `npm run check:store` 49/49。
 > 期间发现两处必须记录的设计修正，见 §11。
 
 ---
@@ -364,12 +364,13 @@ Chat 头部显示会话标题；画像可折叠展示并允许纠正。
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
 | T0.1 ⭐ | 修复双问候：`ensureGreeting()` 幂等 action | ✅ | chatStore.ts + Chat.tsx（build + node 断言通过） |
-| T0.2 ⭐ | 本地 PostgreSQL 可达：创建 `coupletrip` 角色/库（或更正 `PG_DSN`），附脚本 + DEPLOY 步骤 | ⏸ 脚本已就绪，**待你执行** | `backend/scripts/init_local_db.sql` + DEPLOY.md |
+| T0.2 ⭐ | 本地 PostgreSQL 可达：创建 `coupletrip` 角色/库（或更正 `PG_DSN`），附脚本 + DEPLOY 步骤 | ✅ | `backend/scripts/init_local_db.sql` + DEPLOY.md（用户自定义密码，`.env` 同步后连通） |
 | T0.3 ⭐ | 存储收敛：移除聊天链路 Redis（`session_store.py` 退役、compose 去 redis、requirements 去依赖） | ✅ | 见 §11：**并入 P1 执行**（需先有新存储接管，否则中间态是坏的） |
 | T0.4 ⭐ | 消除静默降级：`/health` 暴露存储状态；启动时一次性 ERROR 告警 | ✅ | main.py + storage + `test_storage_health.py`（8 例） |
 | T0.5 | 修复 E2E 路由失效（`/` → `/form`），保持 CI 用例有效 | ✅ | e2e/full_flow.spec.ts（另加问候回归守卫；本机无浏览器未执行） |
 
-**P0 出口**：`/health` 显示 postgres ok（**待 T0.2**）；`PlanStore` 真实往返成功（**待 T0.2**）；pytest 全绿 ✅。
+**P0 出口**：`/health` 显示 postgres ok ✅；`PlanStore` 真实往返成功 ✅
+（本轮新增 `tests/test_storage_pg.py`）；pytest 全绿 ✅。
 **顺带修复**：存储诊断原本只报 `PoolTimeout`，现在报真实原因（`password authentication failed ...`），
 并把连接失败超时从 30s 降到 5s（整套测试 37s → 18s）。
 
@@ -386,7 +387,8 @@ Chat 头部显示会话标题；画像可折叠展示并允许纠正。
 
 **P1 出口**：两轮对话可复现"第二轮引用第一轮" ✅ —— **不必等数据库**：
 `tests/test_conversation_e2e.py` 用内存假 store 驱动 ASGI 应用，端到端断言了
-"turn 2 的 history 里真的有 turn 1，且不含当前轮"；真实 PostgreSQL 往返 ⏸（待 T0.2）；
+"turn 2 的 history 里真的有 turn 1，且不含当前轮"；真实 PostgreSQL 往返 ✅
+（`test_conversation_store_pg.py`）；
 `message_id` 去重 ✅（整轮幂等：assistant 回复以 `<user_message_id>:reply` 为键）；
 pytest 全绿 ✅。
 
@@ -417,15 +419,17 @@ prompt 能说出"上次去过哪" ✅。
 | T3.6 ○ | 会话↔行程关联：`last_plan_id` 回写与列表展示 | ✅ | main.py + plan.ts + SessionList（可点"查看行程"） |
 | T3.7 ⭐ | 前端类型 + `tsc -b && vite build` 通过；`npm run check:store` | ✅ | package.json + scripts/check-chat-store.cjs（49/49） |
 
-**P3 出口**：恢复矩阵 1–7、9 逐条手工验证 ⏸（待 T0.2 后按 §8 清单执行）；build 通过 ✅。
+**P3 出口**：恢复矩阵 1–7、9 的**服务端**行为已由 `smoke_e2e.py` 对真实服务器 + 真实
+PostgreSQL 逐条验证（刷新恢复、幂等重放、会话切换/删除、跨会话画像、会话↔行程关联）；
+浏览器专属项（真实标签页刷新、多标签并发、跨天）见 §11.5；build 通过 ✅。
 
 ### P4 收尾
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
 | T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS/BOOTSTRAP 记 V3 | ✅ | memory/*.md |
-| T4.2 | 手工冒烟清单（§8）执行并记录 | ⏸ 待 T0.2 | memory/DEPLOY.md |
-| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 409 passed + 2 skipped；build 通过；49/49 |
+| T4.2 | 手工冒烟清单（§8）执行并记录 | ✅ | 已脚本化为 `backend/scripts/smoke_e2e.py`，24 项全绿（浏览器专属项见 §11.5） |
+| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 422 passed + 1 skipped；build 通过；49/49 |
 
 ---
 
@@ -534,27 +538,27 @@ PostgreSQL"），每个提交都是绿的。
 `password authentication failed for user "coupletrip"` —— 前者把排查引向了连接超时
 这个错误方向。现在失败时会用一次直接连接取出根因再上报。
 
-### 11.5 未闭环项（需要你执行）
+### 11.5 收尾状态（T0.2 已闭环）
 
-> 2026-10-16 补充：为降低对 T0.2 的依赖，新增了**不依赖数据库的端到端测试**
-> （`tests/test_conversation_e2e.py`，用 `InMemoryConversationStore` 驱动真实 ASGI 应用，
-> 并断言该假实现覆盖了真实 store 的每个公开方法以防腐化）。因此下列内容已可在无 PG 时验证：
-> 两轮对话按序落库、第二轮看到第一轮、重放不重复、修改轮合并进槽位、画像跨会话、
-> 超窗口写摘要、会话 CRUD 与级联删除。
-> **仍然只有 T0.2 能验证的**：真实 PostgreSQL 的读写往返（含 JSONB、唯一约束、级联、
-> 真实并发下的增量摘要游标），以及浏览器里的刷新/多标签/跨天表现。
+**T0.2 已完成**：本机 PostgreSQL 18.6 的角色密码由用户自定义，`backend/.env` 的
+`PG_DSN` 同步后两个存储均 `connected: true`。真实数据库往返已由测试覆盖：
+`tests/test_conversation_store_pg.py`（会话/消息/摘要游标/画像/级联删除）与
+`tests/test_storage_pg.py`（本轮新增：plans 往返、upsert 保留 response、反馈聚合）。
 
-1. **T0.2**：本机 PostgreSQL 18.6（`D:\Software\Postgresql18`）对所有连接要求
-   scram-sha-256，而 `.env` 里的 `coupletrip / coupletrip_dev` 认证失败。已在
-   `backend/scripts/init_local_db.sql` 写好幂等初始化，需以超级用户执行一次：
-   ```
-   "D:\Software\Postgresql18\bin\psql.exe" -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql
-   ```
-   执行前 `tests/test_conversation_store_pg.py` 会以
-   「PostgreSQL unavailable — chat persistence NOT verified」**显式跳过**（不会静默通过）。
-2. **T3.5 / T4.2**：恢复矩阵中依赖真实数据库的条目（刷新恢复、跨天、多标签、
-   会话切换）需在 T0.2 完成后按 §8 的手工冒烟清单逐条勾选。
-3. **E2E**：本机未安装 Playwright 浏览器，T0.5 修好的 5+2 个用例仅在 CI 生效。
+不再需要手动执行任何命令。以下是**仅剩需要浏览器**才能验的条目，以及本轮为此做的加固：
+
+1. **仍只能人工在浏览器里确认的**（服务端行为已由 `smoke_e2e.py` 覆盖）：
+   真实标签页刷新后的水合、两个标签页并发写同一会话、关标签页重开、跨天回来。
+   按 `DEPLOY.md` §五 清单勾选即可。
+2. **E2E**：本机未安装 Playwright 浏览器，T0.5 修好的用例仅在 CI 生效
+   （但 e2e 代码现已纳入 `tsc -b` 类型检查，本机即可发现拼写/类型错误）。
+3. **本轮新增的验证手段**（都不需要浏览器）：
+   - `backend/scripts/smoke_e2e.py`：对**运行中的服务器 + 真实 PostgreSQL** 跑 24 项
+     端到端检查（真实 HTTP、真实 lifespan、SSE 计划管线、会话↔行程关联、级联删除）
+   - `OFFLINE_MODE=true`：清空全部外部凭据，让冒烟测试确定、离线、零成本
+   - `tests/conftest.py` 的 autouse 隔离夹具 + `real_database` 标记：
+     测试套件不再向开发库写入任何行（此前每跑一次会留下 `test-session-123`、
+     `sess-modify-*` 等真实记录）
 
 ### 11.6 首轮漏做、第二轮补齐：L0 整块预算
 

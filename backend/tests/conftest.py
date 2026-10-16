@@ -13,6 +13,41 @@ RUN_QWEATHER_API_TESTS = os.getenv("QWX_TEST_REAL_API", "").lower() in {
 
 
 @pytest.fixture(autouse=True)
+def _isolate_from_real_database(request, monkeypatch):
+    """Keep the suite from touching the developer's PostgreSQL.
+
+    Two separate problems are solved here, both discovered by looking at what
+    the suite had actually written to a real database:
+
+    1. **Pollution.** ``handle_chat`` persists through the real store, so tests
+       that mock only *some* methods (or none) silently inserted rows —
+       ``test-session-123``, ``sess-modify-*`` and friends accumulated in the
+       development database on every run.
+    2. **Environment dependence.** Tests asserting the graceful-degradation path
+       patched only the ``_unavailable`` flag, but ``_get_pool()`` returns an
+       already-cached pool before it ever reads that flag. They passed on a
+       machine with no database and failed as soon as one was running.
+
+    Clearing ``_pool`` *and* the flag fixes both, and makes every test
+    environment-independent. Tests that genuinely need a live database opt out
+    with ``@pytest.mark.real_database``.
+    """
+    if request.node.get_closest_marker("real_database"):
+        yield
+        return
+
+    monkeypatch.setattr("services.storage._pool", None)
+    monkeypatch.setattr("services.storage._pool_unavailable", True)
+    monkeypatch.setattr("services.storage._pool_error", "no database (isolated test)")
+    monkeypatch.setattr("services.conversation_store._pool", None)
+    monkeypatch.setattr("services.conversation_store._pool_unavailable", True)
+    monkeypatch.setattr(
+        "services.conversation_store._pool_error", "no database (isolated test)"
+    )
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _disable_external_apis(monkeypatch):
     """Keep tests deterministic by disabling all external API credentials."""
     monkeypatch.setattr("config.settings.settings.openai_api_key", "")

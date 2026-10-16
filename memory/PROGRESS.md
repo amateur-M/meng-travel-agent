@@ -396,8 +396,21 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**409 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
-  跳过原因显式打印）
+- [x] 后端 `pytest -q`：**422 passed + 1 skipped**（唯一 skip 是需 `QWX_TEST_REAL_API=1`
+  的真实天气测试；无数据库环境下为 420 passed + 3 skipped，两个 PG 往返测试
+  **显式打印原因**后跳过）
+- [x] **真实 PostgreSQL 往返已通过**（T0.2 闭环）：`test_conversation_store_pg.py`
+  覆盖会话/消息/幂等重放/摘要游标/画像/级联删除；本轮新增 `test_storage_pg.py` 覆盖
+  plans 往返、upsert 保留 response、反馈聚合与过滤
+- [x] **对运行中服务器 + 真实库的 24 项端到端冒烟全绿**：`backend/scripts/smoke_e2e.py`
+  （真实 HTTP、启动 lifespan、SSE 计划管线、会话↔行程关联、级联删除、画像"遗忘"）
+- [x] **测试套件不再写开发库**：新增 autouse 隔离夹具 + `real_database` 标记，
+  跑完 `chat_sessions/chat_messages/user_profiles/plans/plan_feedback` 全为 0 行
+  —— 此前每跑一次会留下 20+ 条真实记录（`test-session-123`、`sess-modify-*` 等）
+- [x] **新增 `OFFLINE_MODE`**：清空全部外部凭据使冒烟/演示/CI 确定、离线、零成本。
+  起因是一次真实教训 —— 把 key 环境变量设为**空字符串并不能**覆盖 `.env`
+  （pydantic-settings 视空环境变量为未设置），于是冒烟测试意外发出了真实的
+   LLM/天气/地图请求
 - [x] **不依赖数据库也能验证完整对话链路**：`tests/test_conversation_e2e.py` 用
   `InMemoryConversationStore`（并断言它实现了真实 store 的每个公开方法，防止假实现腐化）
   驱动 ASGI 应用端到端 —— 两轮对话按序落库、**第二轮真的看到第一轮**、重放同一
@@ -416,8 +429,10 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
   而 PG 不可达时这个数字就是 5s 池超时 —— 期间**所有**请求都被冻住。现全部经
   `asyncio.to_thread`，新增 `tests/test_event_loop.py` 用**事件循环延迟**度量守住
   四条路径（计划写入/读取/历史/反馈）；该测试在修复前确实失败（0.39s < 阈值 0.15s 不成立）
-- [ ] 恢复矩阵中依赖**真实数据库**的条目（刷新恢复、跨天、多标签、切换、真实 PG 往返）
-  待 T0.2 后按 `DEPLOY.md` 手工冒烟清单逐条勾选
+- [x] 恢复矩阵的服务端条目已自动化：`smoke_e2e.py` 对真实服务器 + 真实库验证
+  刷新读取、幂等重放、会话切换/删除、跨会话画像、会话↔行程关联；
+  **只剩浏览器专属**的三项需人工确认（真实标签页刷新、多标签并发、跨天）——
+  见 `DEPLOY.md` §五.2
 
 ### V3 的设计修正（详见计划文档 §11）
 

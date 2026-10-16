@@ -266,6 +266,20 @@ async def update_profile(
     return {"client_id": body.client_id, "profile": merged}
 
 
+@app.delete("/api/profile")
+async def forget_profile(
+    client_id: str = Query(..., min_length=1, max_length=64),
+    _: None = Depends(verify_api_key),
+):
+    """Forget everything remembered about this browser (the "forget me" action).
+
+    Removes the L2 profile row only. Conversations are separate objects that the
+    user deletes individually, so this never silently wipes their history.
+    """
+    deleted = await conversation_store.delete_profile(client_id)
+    return {"client_id": client_id, "deleted": deleted}
+
+
 @app.get("/api/chat/recall")
 async def get_recall(_: None = Depends(verify_api_key)):
     """Episodic memory preview (L3) for the UI: past trips + activity feedback."""

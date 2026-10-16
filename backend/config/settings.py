@@ -10,7 +10,7 @@ unchanged.
 import json
 from typing import Annotated, List
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -100,6 +100,17 @@ class Settings(BaseSettings):
     # P3.3 CORS origins（逗号分隔）；默认开发环境，生产从 env 注入
     cors_origins: Annotated[List[str], NoDecode] = ["http://localhost:5173"]
 
+    # 离线/确定性模式：给冒烟测试、演示与 CI 用。
+    # 置 true 时清空全部外部凭据，于是 LLM 与天气/地图工具各自走既有的 mock 路径
+    # —— 既不发真实请求、不花钱，也不受上游输出波动影响（真实模型的槽位提取结果
+    # 会随版本变化，断言会因此变得不稳定）。
+    #
+    # 为什么需要一个专门的开关：环境变量必须给**非空**值才能覆盖 .env。
+    # 把某把 key 设成空字符串并不会覆盖 .env 里的值（pydantic-settings 视空环境
+    # 变量为未设置），所以 `$env:OPENAI_API_KEY=''` 这种直觉做法是无效的 ——
+    # 曾因此在冒烟测试里意外发出了真实的 LLM/天气/地图请求。
+    offline_mode: bool = False
+
     # Allow comma-separated strings from env for list fields
     @field_validator("api_keys", mode="before")
     @classmethod
@@ -110,6 +121,26 @@ class Settings(BaseSettings):
     @classmethod
     def _parse_cors_origins(cls, v):
         return _split_csv(v)
+
+    @model_validator(mode="after")
+    def _clear_credentials_when_offline(self):
+        """In offline mode, drop every external credential.
+
+        Clearing them (rather than adding checks in each caller) means every
+        existing mock fallback engages through the path it already has.
+        """
+        if self.offline_mode:
+            for name in (
+                "openai_api_key",
+                "deepseek_api_key",
+                "qwen_api_key",
+                "kimi_api_key",
+                "weather_api_key",
+                "maps_api_key",
+            ):
+                if hasattr(self, name):
+                    setattr(self, name, "")
+        return self
 
 
 settings = Settings()

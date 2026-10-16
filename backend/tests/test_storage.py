@@ -1,11 +1,16 @@
 """Tests for PlanStore (P0.1 行程持久化).
 
-When PostgreSQL is unavailable (no Docker / no live DB in CI), the store
-should degrade gracefully — every method returns a safe fallback instead
-of raising.  These tests verify that graceful degradation path.
+When PostgreSQL is unavailable the store degrades gracefully instead of
+raising: every method returns a safe fallback.
 
-A separate integration test (marked with a marker that requires a live DB)
-can be added later for the happy path.
+These tests rely on the suite-wide ``_isolate_from_real_database`` fixture
+(see conftest.py), which is what makes them environment-independent. Clearing
+only the ``_unavailable`` flag (as this file originally did) left them passing
+*only* on a machine with no database, and failing as soon as one was running:
+a test that depends on the environment cannot prove anything about the degraded
+path.
+
+The happy path is covered by tests/test_storage_pg.py.
 """
 
 import pytest
@@ -25,33 +30,30 @@ class TestPlanStoreDegraded:
         ids = {generate_plan_id() for _ in range(100)}
         assert len(ids) == 100
 
-    def test_save_returns_false_without_db(self, monkeypatch):
-        # Force pool to be unavailable
-        monkeypatch.setattr("services.storage._pool_unavailable", True)
-        store = PlanStore()
-        result = store.save("test-id", {"destination": "大理"})
+    def test_save_returns_false_without_db(self):
+        result = PlanStore().save("test-id", {"destination": "大理"})
         assert result is False
 
-    def test_update_returns_false_without_db(self, monkeypatch):
-        monkeypatch.setattr("services.storage._pool_unavailable", True)
-        store = PlanStore()
-        result = store.update("test-id", {"days": []})
+    def test_update_returns_false_without_db(self):
+        result = PlanStore().update("test-id", {"days": []})
         assert result is False
 
-    def test_get_returns_none_without_db(self, monkeypatch):
-        monkeypatch.setattr("services.storage._pool_unavailable", True)
-        store = PlanStore()
-        result = store.get("nonexistent-id")
-        assert result is None
+    def test_get_returns_none_without_db(self):
+        assert PlanStore().get("nonexistent-id") is None
 
-    def test_list_returns_empty_without_db(self, monkeypatch):
-        monkeypatch.setattr("services.storage._pool_unavailable", True)
-        store = PlanStore()
-        result = store.list()
-        assert result == []
+    def test_list_returns_empty_without_db(self):
+        assert PlanStore().list() == []
 
-    def test_delete_returns_false_without_db(self, monkeypatch):
-        monkeypatch.setattr("services.storage._pool_unavailable", True)
-        store = PlanStore()
-        result = store.delete("nonexistent-id")
-        assert result is False
+    def test_delete_returns_false_without_db(self):
+        assert PlanStore().delete("nonexistent-id") is False
+
+    def test_save_feedback_returns_false_without_db(self):
+        assert PlanStore().save_feedback("p1", "洱海骑行", "up") is False
+
+    def test_list_feedback_returns_empty_without_db(self):
+        assert PlanStore().list_feedback() == []
+
+    def test_health_reports_disconnected(self):
+        health = PlanStore().health()
+        assert health["connected"] is False
+        assert health["error"], "a disconnected store must explain why"

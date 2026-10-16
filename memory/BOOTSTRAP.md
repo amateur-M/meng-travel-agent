@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **409 passed + 2 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **422 passed + 1 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49。
 
 **V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
 起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：
@@ -15,20 +15,26 @@
 - **移除 Redis**：会话迁 PG 后 Redis 零消费者（限流器本就未用），依赖/compose/env 均已清理
 
 **下一步行动**：
-1. **执行本地库初始化**（V3 唯一未闭环项）：`"D:\Software\Postgresql18\bin\psql.exe" -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql`，然后按 [DEPLOY.md](DEPLOY.md) §五 手工冒烟清单逐条验证（刷新恢复、多标签、长对话摘要、跨会话画像）
+1. 只剩**浏览器专属**的手工确认（服务端行为已全部自动化）：真实标签页刷新后的水合、
+   两个标签页并发写同一会话、关标签页重开、跨天回来 —— 见 [DEPLOY.md](DEPLOY.md) §五
 2. OpenTelemetry tracing（V2 唯一跳过项）——LLM 与 Amap/QWeather 调用暂无 span
 3. 如需扩展：多用户协作编辑、更多目的地、离线缓存等
 
 **环境提醒**：
 - `backend/.venv` 需与 `requirements.txt` 保持同步（`pip install -r requirements.txt`）；曾因缺少 V2 依赖导致 pytest 直接 16 个 collection error
-- PostgreSQL 未初始化时应用**不会崩**，只是不持久化；`/health` 会显示 `degraded` 且带原因，PG 往返测试会显式 skip（不静默通过）
-- 本机未安装 Playwright 浏览器，E2E 仅在 CI 生效
+- PostgreSQL 已初始化并在用（密码是用户自定义的，写在 gitignored 的 `backend/.env`）；
+  连不上时应用**不会崩**，只是不持久化，`/health` 会显示 `degraded` 且带原因
+- **测试不会碰你的开发库**：`tests/conftest.py` 有 autouse 隔离夹具，
+  需要真实库的测试用 `@pytest.mark.real_database` 显式退出隔离
+- **`OFFLINE_MODE=true`** 可清空全部外部凭据，让冒烟/演示零成本离线运行。
+  不要用"把 key 设成空字符串"的办法 —— **空环境变量不会覆盖 `.env`**
+  （pydantic-settings 视为未设置），曾因此意外发出真实付费请求
 - 存储层用**同步 psycopg 池 + `asyncio.to_thread`**：psycopg 异步模式在 Windows 默认 `ProactorEventLoop` 上会直接报错，不要改回 `AsyncConnectionPool`
 - **本机 shell 是 Windows PowerShell 5.1**（桌面版，默认代码页 `gb2312`），不是 pwsh 7：
   `Get-Content` / `Set-Content` 默认按 GBK 读写，**不要用它们往返 UTF-8 文本文件**
-  （会把中文二次编码、并写入 BOM —— 曾因此在一次批量替换里损坏 4 个 memory 文档，
-  已 `git checkout` 恢复）。改文本请用编辑工具；确需命令行处理时显式指定编码并核对结果
-- 本机未安装 Docker，但 PostgreSQL 18.6（`D:\Software\Postgresql18`）与 Redis 均为原生安装
+  （会把中文/框线字符二次编码、并写入 BOM —— 已因此损坏过 4 个 memory 文档和 2 个测试文件，
+  均用 `git checkout` 或编辑工具恢复）。改文本请用编辑工具
+- 本机未安装 Docker，但 PostgreSQL 18.6（`D:\Software\Postgresql18`）为原生安装
 
 ---
 
