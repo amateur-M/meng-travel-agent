@@ -485,7 +485,15 @@ async def create_plan(request: Request, body: TripPlanRequest, _: None = Depends
     plan_id = generate_plan_id()
 
     request_dict = body.model_dump(mode="json")
+    # Drop the session link from the stored request body: it is conversation
+    # bookkeeping, not part of the trip itself.
+    request_dict.pop("session_id", None)
     plan_store.save(plan_id, request_dict, status="processing")
+
+    # V3/P1: remember on the session which trip it produced, so the sidebar can
+    # offer "查看行程" after a refresh.
+    if body.session_id:
+        await conversation_store.set_last_plan(body.session_id, plan_id)
 
     initial_state: AgentState = {
         "user_input": {

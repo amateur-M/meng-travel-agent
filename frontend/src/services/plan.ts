@@ -333,11 +333,18 @@ export async function createPlan(
 /**
  * P0.3: 第一步 — POST /api/plan 创建规划，返回 plan_id + stream_url。
  * 不等待管线完成，立即返回。
+ *
+ * V3/P3: 传入 sessionId 时，后端会把 plan_id 记回该对话，侧边栏才能在刷新后
+ * 提供"查看行程"。
  */
 export async function startPlan(
   request: TripPlanRequest,
+  sessionId?: string,
 ): Promise<{ plan_id: string; stream_url: string; status: string }> {
-  const response = await api.post("/api/plan", request);
+  const response = await api.post("/api/plan", {
+    ...request,
+    session_id: sessionId ?? null,
+  });
   return response.data as { plan_id: string; stream_url: string; status: string };
 }
 

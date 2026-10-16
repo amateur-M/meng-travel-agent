@@ -50,6 +50,10 @@ class TripPlanRequest(BaseModel):
         description="偏好标签"
     )
     pace: Pace = Field(default=Pace.relaxed, description="行程节奏")
+    session_id: Optional[str] = Field(
+        None,
+        description="发起规划的对话会话 ID（V3/P1）；传入后该会话会记住本次行程",
+    )
 
 
 # ── Core Models ──────────────────────────────────────────────────

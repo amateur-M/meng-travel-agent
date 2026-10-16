@@ -84,8 +84,8 @@ class TestTranscript:
 
     def test_returns_messages_with_total(self, client):
         messages = [
-            {"role": "user", "content": "想去大理", "created_at": None},
-            {"role": "assistant", "content": "好呀", "created_at": None},
+            {"role": "user", "content": "想去大理", "created_at": None, "message_id": "m1"},
+            {"role": "assistant", "content": "好呀", "created_at": None, "message_id": None},
         ]
         with patch(f"{SESSIONS}.get_messages", new=AsyncMock(return_value=messages)), patch(
             f"{SESSIONS}.get_session", new=AsyncMock(return_value={"message_count": 2})
@@ -97,6 +97,9 @@ class TestTranscript:
         assert body["total"] == 2
         assert [m["role"] for m in body["items"]] == ["user", "assistant"]
         assert body["items"][0]["content"] == "想去大理"
+        # The turn id must reach the client: after a refresh it is the only way
+        # to retry a message that never got a reply without duplicating it.
+        assert body["items"][0]["message_id"] == "m1"
 
     def test_unknown_session_is_404(self, client):
         with patch(f"{SESSIONS}.get_messages", new=AsyncMock(return_value=[])), patch(
@@ -257,3 +260,41 @@ class TestRecallEndpoint:
 
         assert response.status_code == 200
         assert response.json() == {"trips": [], "feedback": []}
+
+
+PLAN_BODY = {
+    "origin": "北京",
+    "destination": "大理",
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-03",
+    "budget": 5000,
+    "preferences": ["浪漫", "美食"],
+    "pace": "轻松",
+}
+
+
+class TestPlanLinksToSession:
+    """A finished trip is remembered on the conversation that asked for it."""
+
+    def test_plan_records_last_plan_on_the_session(self, client):
+        with patch("main.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
+            "main.plan_store.save", return_value=True
+        ) as save, patch("main._run_graph_to_queue", new=AsyncMock()) as run:
+            response = client.post("/api/plan", json={**PLAN_BODY, "session_id": "sess-1"})
+
+        assert response.status_code == 200
+        plan_id = response.json()["plan_id"]
+        link.assert_awaited_once_with("sess-1", plan_id)
+        # session_id is conversation bookkeeping, not part of the trip record
+        assert "session_id" not in save.call_args.args[1]
+        # the pipeline is still launched for that plan
+        assert run.call_args.args[1] == plan_id
+
+    def test_plan_without_session_does_not_link(self, client):
+        with patch("main.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
+            "main.plan_store.save", return_value=True
+        ), patch("main._run_graph_to_queue", new=AsyncMock()):
+            response = client.post("/api/plan", json=PLAN_BODY)
+
+        assert response.status_code == 200
+        link.assert_not_awaited()
