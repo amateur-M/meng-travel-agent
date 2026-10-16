@@ -157,7 +157,10 @@ P1.3 把 `/` 改成 Chat 页、表单移到 `/form`，但 `frontend/e2e/full_flo
 1. **客户端 id**：localStorage 生成 UUID，随请求带走（多设备不共享，但零改动接入鉴权）
 2. **单一全局画像**：单人部署，一张表一行（最简单，换浏览器也共享）
 3. 未来接入鉴权后再挂 `user_id`
-本轮建议 **选项 1**，并在 `user_profiles` 表预留 `user_id` 列以便将来迁移。
+**已采用选项 1**（`localStorage` 里的 `coupletrip.client_id`，随 `POST /api/chat` 与
+`/api/profile` 传递），并在 `user_profiles` 表预留 `user_id` 列以便将来接入鉴权后迁移。
+注意取舍：清了浏览器存储就会换一个新身份，L2 画像随之"重新开始"（旧行仍在库里，
+将来接鉴权时可归并）。
 
 ---
 
@@ -226,9 +229,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_client  ON chat_sessions (client_id
 而现有 `PlanStore` 用的是**同步** `ConnectionPool`，却在 async 端点里直接调用——这是遗留不一致。
 新层用 `psycopg_pool.AsyncConnectionPool` + `await`，全程不阻塞。
 
-方法集：`create_session / get_session / list_sessions / rename_session / delete_session /
-append_message(幂等) / get_messages / get_recent_messages / update_slots /
-set_summary / get_profile / merge_profile / set_last_plan / health`
+方法集（17 个公开方法，与实现一致）：
+`ensure_session / get_session / list_sessions / rename_session / set_title_if_empty /
+delete_session / append_message(幂等) / get_messages / get_recent_messages /
+update_slots / set_plan_request / set_summary(带覆盖游标) / set_last_plan /
+get_profile / merge_profile / delete_profile / health`
 
 **失败不静默**（与现状的关键差异）：`health()` 返回真实连接状态，供 `/health` 暴露。
 
