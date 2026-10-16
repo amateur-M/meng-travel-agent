@@ -42,7 +42,7 @@
 
 ### Verification
 
-- 后端 `pytest -q`：**391 passed + 2 skipped**（skip 均为 PostgreSQL 未初始化，原因显式打印）
+- 后端 `pytest -q`：**407 passed + 2 skipped**（skip 均为 PostgreSQL 未初始化，原因显式打印）
 - 前端：`npm run build` 通过（gzip 131.93 kB）+ `npm run check:store` 49/49
 - 无 key / 无 PG 环境全部走 mock 与优雅降级，无 500
 

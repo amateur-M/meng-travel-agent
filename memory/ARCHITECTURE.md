@@ -139,7 +139,7 @@ Agent 从"单轮提取器"变成"能持续对话"的关键。四层各司其职�
 
 | 层 | 名称 | 内容 | 存放 | 注入方式 |
 |----|------|------|------|----------|
-| **L0** | 工作记忆 | 最近 10 轮（20 条）原文 | `chat_messages` | 真实多轮 Human/AI 消息 |
+| **L0** | 工作记忆 | 最近 10 轮（20 条）原文，**单条 ≤2000 字符、整块 ≤8000 字符** | `chat_messages` | 真实多轮 Human/AI 消息 |
 | **L1** | 会话内长期记忆 | 滑出窗口部分的滚动摘要 | `chat_sessions.summary` + `summary_message_count` 游标 | system prompt 段落 |
 | **L2** | 跨会话画像 | 出发地/节奏/偏好/预算区间/忌口 | `user_profiles`（key = 浏览器 `client_id`） | system prompt 段落 |
 | **L3** | 情节记忆 | 历史行程、去过的目的地、活动级 👍/👎 | `plans` + `plan_feedback` | system prompt 段落 |
@@ -158,10 +158,17 @@ prompt 会渲染成"出发地：上海（此前提到过：北京）"，而不�
 **两段式 LLM 调用**（成本控制）：
 
 ```
-Call 1（总是）：意图 + 槽位 + modify_patch  ← 结构化 JSON，带 L0 history
-Call 2（仅 question / greeting）：自由文本真回答
-规划类（planning_intent / planning_ready / modify_plan）：确定性模板，不额外调用
+Call 1（总是）：意图 + 槽位 + modify_patch + reply  ← 结构化 JSON，带 L0 history
+Call 2（仅 question / greeting）：自由文本真回答（acall_llm_text）
+规划类（planning_intent / planning_ready / modify_plan）：
+    直接用 Call 1 返回的 reply 文案；模型没给文案时才用确定性模板兜底。
+    **不额外调用**，因为"还差哪些信息""改成了什么"是可确定表达的。
 ```
+
+**L0 预算**：窗口 20 条只是上限，实际进 prompt 的内容还受两道字符上限约束 ——
+单条 2000 字符、整块 8000 字符；超预算时**从最旧的一条开始丢**（L1 摘要已承载
+旧内容，而丢掉紧跟当前消息的那一轮会恰好破坏"那改成三天呢"这类追问）。
+由 `tests/test_llm_history.py` 钉住。
 
 **数据模型（PostgreSQL，与 `plans` 同库）**：
 

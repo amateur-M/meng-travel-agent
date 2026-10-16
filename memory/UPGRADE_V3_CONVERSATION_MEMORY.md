@@ -28,7 +28,7 @@
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
 >
 > **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
-> 后端 **391 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
+> 后端 **407 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
 > 期间发现两处必须记录的设计修正，见 §11。
 
 ---
@@ -252,10 +252,11 @@ set_summary / get_profile / merge_profile / set_last_plan / health`
 4. Call 1（总是）：意图 + 槽位 + modify_patch（结构化 JSON，带 history）
 5. 分支：
    ├─ intent ∈ {question, greeting} → Call 2：acall_llm_text 真回答
-   └─ 其余 → 模板话术（沿用现有追问 / _describe_patch），省一次调用
-6. 落库 assistant 回复；更新 slots / updated_at；首条用户消息生成标题
-7. 若超出窗口 → 触发 L1 摘要更新（失败不影响回复）
-8. 若本轮出现可入库的画像信息（忌口/预算区间等）→ 合并进 L2
+   └─ 其余 → 用 Call 1 返回的 reply 文案；模型没给文案时用确定性模板兜底（不额外调用）
+6. 落库 assistant 回复（以 `<user_message_id>:reply` 为键，整轮幂等）；
+   更新 slots / updated_at；首条实质消息生成标题
+7. 若溢出的消息满 4 条 → 触发 L1 摘要更新（失败不影响回复）
+8. 若本轮出现可入库的画像信息（出发地/节奏/偏好/预算区间/忌口）→ 合并进 L2
 ```
 
 ### 5.5 REST API（全部走 `verify_api_key`）
@@ -378,7 +379,7 @@ pytest 全绿 ✅。
 | T2.1 ⭐ | L1 滚动摘要：`summary` + `summary_message_count` 游标 + 增量压缩 + 注入 prompt | ✅ | agents/memory.py + conversation_store |
 | T2.2 ○ | L2 画像：`user_profiles` + 提取/合并规则 + `GET/PATCH /api/profile` | ✅ | agents/memory.py + main.py |
 | T2.3 ○ | L3 情节召回：最近行程 + `plan_feedback` 聚合进 prompt + `GET /api/chat/recall` | ✅ | agents/memory.py + conversation.py |
-| T2.4 ○ | 记忆预算：窗口 10 轮(20 条)、溢出满 4 条才摘要、单条截断 2000 字、组装顺序固化 | ✅ | agents/memory.py（顺序由测试钉住） |
+| T2.4 ○ | 记忆预算：窗口 10 轮(20 条)、**整块 ≤8000 字符**、单条截断 2000 字符、溢出满 4 条才摘要、组装顺序固化 | ✅ | agents/memory.py + services/llm.py（整块上限为首轮漏做、本轮补齐，见 §11.6） |
 | T2.5 ○ | 记忆测试：摘要触发、画像合并与冲突、召回渲染、prompt 组装顺序 | ✅ | tests/test_memory.py（43 例） |
 
 **P2 出口**：长对话仍能引用早期内容 ✅（摘要+游标机制与注入均有单测）；新会话继承画像 ✅；
@@ -406,7 +407,7 @@ prompt 能说出"上次去过哪" ✅。
 |---------|------|------|------|
 | T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS/BOOTSTRAP 记 V3 | ✅ | memory/*.md |
 | T4.2 | 手工冒烟清单（§8）执行并记录 | ⏸ 待 T0.2 | memory/DEPLOY.md |
-| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 391 passed + 2 skipped；build 通过；49/49 |
+| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 407 passed + 2 skipped；build 通过；49/49 |
 
 ---
 
@@ -536,3 +537,18 @@ PostgreSQL"），每个提交都是绿的。
 2. **T3.5 / T4.2**：恢复矩阵中依赖真实数据库的条目（刷新恢复、跨天、多标签、
    会话切换）需在 T0.2 完成后按 §8 的手工冒烟清单逐条勾选。
 3. **E2E**：本机未安装 Playwright 浏览器，T0.5 修好的 5+2 个用例仅在 CI 生效。
+
+### 11.6 首轮漏做、第二轮补齐：L0 整块预算
+
+T2.4 写的是"记忆预算：**token 上限**、摘要触发阈值、单条截断、组装顺序固化"，
+但首轮只实现了单条截断（2000 字符），**整块上限没做**，而 ARCHITECTURE 与
+PROGRESS 已按"有预算"描述。窗口 20 条 × 单条 2000 字符最坏约 4 万字符，
+每轮请求都要发出去 —— 属于计划未交付 + 文档与代码不符。
+
+第二轮补齐：`MAX_HISTORY_TOTAL_CHARS = 8000`，超预算时**从最旧的一条开始丢**
+（旧内容已由 L1 摘要承载；丢掉紧跟当前消息的那一轮会恰好破坏"那改成三天呢"这类追问）。
+当前用户消息永不被预算裁掉。由 `tests/test_llm_history.py` 16 例覆盖
+（单条截断、整块上限、保留最新/丢弃最旧、时序、角色映射、异常行容忍、当前消息不截断）。
+
+同时修正另一处文档精度问题：原先写"规划类 → 确定性模板"，实际是**优先用 Call 1
+返回的 reply 文案、模型没给文案时才用模板兜底**；"不额外调用"这一半才是准确的。

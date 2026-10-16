@@ -22,9 +22,11 @@ from config.settings import settings
 
 logger = logging.getLogger("coupletrip")
 
-# L0 working memory: the caller decides how many turns to pass; each individual
-# turn is truncated so one pasted itinerary cannot blow up the context window.
+# L0 working memory budget. The caller decides how many turns to pass; each turn
+# is truncated individually *and* the block as a whole is capped, so a long
+# conversation (or one pasted itinerary) cannot inflate every single request.
 MAX_HISTORY_CONTENT_CHARS = 2000
+MAX_HISTORY_TOTAL_CHARS = 8000
 
 # ---------------------------------------------------------------------------
 # Per-provider client cache
@@ -116,6 +118,52 @@ def _as_text(response) -> str:
     return content if isinstance(content, str) else str(content)
 
 
+def _memory_messages(history: Optional[list[dict]]) -> list:
+    """Select the newest remembered turns that fit the budget, oldest-first.
+
+    Two caps apply: each turn is truncated to ``MAX_HISTORY_CONTENT_CHARS``, and
+    the block as a whole to ``MAX_HISTORY_TOTAL_CHARS``.
+
+    Selection walks **newest-first** on purpose. Dropping the oldest remembered
+    turns is the right trade: L1's rolling summary already carries what they
+    said, whereas losing the exchange immediately before the current message
+    would break exactly the follow-ups ("那改成三天呢") that memory exists for.
+
+    Unknown roles, empty turns and non-dict rows are skipped rather than
+    raising, so a malformed row in the store cannot break a conversation.
+    """
+    candidates: list[tuple[str, str]] = []
+
+    for turn in history or []:
+        if not isinstance(turn, dict):
+            continue
+        role = turn.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = str(turn.get("content") or "").strip()
+        if not content:
+            continue
+        candidates.append((role, content[:MAX_HISTORY_CONTENT_CHARS]))
+
+    selected: list[tuple[str, str]] = []
+    budget = MAX_HISTORY_TOTAL_CHARS
+    for role, content in reversed(candidates):
+        # Always keep at least the most recent turn, even if it somehow exceeds
+        # the whole budget on its own.
+        if selected and len(content) > budget:
+            break
+        selected.append((role, content))
+        budget -= len(content)
+        if budget <= 0:
+            break
+
+    selected.reverse()
+    return [
+        AIMessage(content=content) if role == "assistant" else HumanMessage(content=content)
+        for role, content in selected
+    ]
+
+
 def _build_messages(
     system_prompt: str,
     user_prompt: str,
@@ -124,25 +172,11 @@ def _build_messages(
     """Assemble system prompt + remembered turns + the new user turn (L0 memory).
 
     ``history`` is the transcript as ``[{"role": "user"|"assistant",
-    "content": str}, ...]``, oldest first. Unknown roles and empty turns are
-    skipped rather than raising, so a malformed row in the store cannot break
-    the conversation.
+    "content": str}, ...]``, oldest first. The current ``user_prompt`` is always
+    appended last and is never truncated by the history budget.
     """
     messages: list = [SystemMessage(content=system_prompt)]
-
-    for turn in history or []:
-        if not isinstance(turn, dict):
-            continue
-        content = str(turn.get("content") or "").strip()
-        if not content:
-            continue
-        content = content[:MAX_HISTORY_CONTENT_CHARS]
-        role = turn.get("role")
-        if role == "assistant":
-            messages.append(AIMessage(content=content))
-        elif role == "user":
-            messages.append(HumanMessage(content=content))
-
+    messages.extend(_memory_messages(history))
     messages.append(HumanMessage(content=user_prompt))
     return messages
 

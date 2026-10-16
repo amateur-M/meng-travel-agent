@@ -376,6 +376,11 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - [x] L3 情节召回：历史行程 + `plan_feedback` 聚合。**反馈表首次进入在线链路**
 - [x] prompt 组装顺序固定：角色 → L2 → L3 → L1 → L0 真实消息
 - [x] **全部用结构化存储 + SQL 召回，无 embedding** —— 长期记忆与"V2 拒绝 pgvector"并不冲突
+- [x] 记忆预算（T2.4 收口）：L0 窗口 20 条，且**单条 ≤2000 字符、整块 ≤8000 字符** ——
+  超预算丢最旧的（旧内容已由 L1 承载，丢最新一轮会破坏"那改成三天呢"这类追问）；
+  溢出满 4 条才触发摘要；摘要上限 1200 字。由 `tests/test_llm_history.py`（16 例）钉住。
+  *此项在首轮收尾时自查发现只做了单条截断、漏了整块上限，而文档已按"有预算"描述 —— 属未交付，
+  本轮补齐。*
 
 ### P3 对话恢复与前端
 
@@ -391,7 +396,7 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**391 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
+- [x] 后端 `pytest -q`：**407 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
   跳过原因显式打印）
 - [x] **不依赖数据库也能验证完整对话链路**：`tests/test_conversation_e2e.py` 用
   `InMemoryConversationStore`（并断言它实现了真实 store 的每个公开方法，防止假实现腐化）
