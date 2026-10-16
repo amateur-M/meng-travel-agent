@@ -28,7 +28,7 @@
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
 >
 > **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
-> 后端 **407 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
+> 后端 **409 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 49/49。
 > 期间发现两处必须记录的设计修正，见 §11。
 
 ---
@@ -407,7 +407,7 @@ prompt 能说出"上次去过哪" ✅。
 |---------|------|------|------|
 | T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS/BOOTSTRAP 记 V3 | ✅ | memory/*.md |
 | T4.2 | 手工冒烟清单（§8）执行并记录 | ⏸ 待 T0.2 | memory/DEPLOY.md |
-| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 407 passed + 2 skipped；build 通过；49/49 |
+| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 409 passed + 2 skipped；build 通过；49/49 |
 
 ---
 

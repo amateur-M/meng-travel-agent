@@ -396,7 +396,7 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 ### V3 验证记录
 
-- [x] 后端 `pytest -q`：**407 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
+- [x] 后端 `pytest -q`：**409 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
   跳过原因显式打印）
 - [x] **不依赖数据库也能验证完整对话链路**：`tests/test_conversation_e2e.py` 用
   `InMemoryConversationStore`（并断言它实现了真实 store 的每个公开方法，防止假实现腐化）

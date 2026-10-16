@@ -178,19 +178,31 @@ def render_past_trips(
     plans: Optional[list[dict]],
     feedback: Optional[list[dict]],
 ) -> str:
-    """Render L3 as a system-prompt section (empty string when nothing known)."""
+    """Render L3 as a system-prompt section (empty string when nothing known).
+
+    Only **completed** trips count as episodic memory. A plan that is still
+    running, or that failed, is not somewhere the couple went — presenting it as
+    "过往行程" invites the model to say "上次你们去了大理" about a trip that
+    never existed.
+
+    (``GET /api/chat/recall`` deliberately returns the raw rows, including
+    in-progress plans, for the UI to display; only the prompt is filtered here.)
+    """
     sections = []
 
-    trips = [p for p in (plans or []) if p.get("destination")]
+    trips = [
+        p
+        for p in (plans or [])
+        if p.get("destination") and p.get("status") == "completed"
+    ]
     if trips:
         lines = []
         for plan in trips[:MAX_TRIPS_IN_PROMPT]:
             dates = "~".join(
                 str(v) for v in (plan.get("start_date"), plan.get("end_date")) if v
             )
-            status = "已完成" if plan.get("status") == "completed" else "生成中"
             suffix = f" {dates}" if dates else ""
-            lines.append(f"- {plan['destination']}{suffix}（{status}）")
+            lines.append(f"- {plan['destination']}{suffix}")
         sections.append("## 过往行程（情节记忆）\n" + "\n".join(lines))
 
     liked = [f for f in (feedback or []) if f.get("up")]

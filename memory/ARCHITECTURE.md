@@ -142,7 +142,7 @@ Agent 从"单轮提取器"变成"能持续对话"的关键。四层各司其职�
 | **L0** | 工作记忆 | 最近 10 轮（20 条）原文，**单条 ≤2000 字符、整块 ≤8000 字符** | `chat_messages` | 真实多轮 Human/AI 消息 |
 | **L1** | 会话内长期记忆 | 滑出窗口部分的滚动摘要 | `chat_sessions.summary` + `summary_message_count` 游标 | system prompt 段落 |
 | **L2** | 跨会话画像 | 出发地/节奏/偏好/预算区间/忌口 | `user_profiles`（key = 浏览器 `client_id`） | system prompt 段落 |
-| **L3** | 情节记忆 | 历史行程、去过的目的地、活动级 👍/👎 | `plans` + `plan_feedback` | system prompt 段落 |
+| **L3** | 情节记忆 | **已完成**的历史行程与目的地、活动级 👍/👎 | `plans` + `plan_feedback` | system prompt 段落 |
 | **L4** | 语义检索 | 模糊语义召回 | — | **延后**；需要时先用 `tsvector`/`pg_trgm`，仍不必上 pgvector |
 
 **prompt 组装顺序固定**（由测试钉住）：角色与规则 → L2 画像 → L3 行程 → L1 摘要 →
@@ -208,7 +208,7 @@ P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台�
 | `DELETE` | `/api/plan/{plan_id}` | 删除历史行程 |
 | `POST` | `/api/plan/{plan_id}/feedback` | 活动级 👍/👎 反馈（L3 情节记忆的数据源） |
 | `POST` | `/api/chat` | 对话：意图 + 槽位 + 回复（V3：带记忆、落库、幂等） |
-| `GET` | `/api/chat/sessions` | 对话列表（分页，最近活跃倒序，驱动侧边栏） |
+| `GET` | `/api/chat/sessions` | 对话列表（分页，最近活跃倒序，驱动侧边栏）；`client_id` 可选，**不传则列出全部**（单用户/测试用，前端始终会传） |
 | `GET` | `/api/chat/sessions/{id}` | 会话详情（slots / summary / plan_request / last_plan_id） |
 | `GET` | `/api/chat/sessions/{id}/messages` | 完整对话记录（分页，含 `message_id` 供幂等重试） |
 | `PATCH` | `/api/chat/sessions/{id}` | 重命名会话 |

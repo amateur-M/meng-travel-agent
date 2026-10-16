@@ -219,7 +219,24 @@ class TestEpisodicRendering:
             ],
             [],
         )
-        assert "大理" in text and "2026-09-01~2026-09-03" in text and "已完成" in text
+        assert "大理" in text and "2026-09-01~2026-09-03" in text
+
+    def test_only_completed_trips_are_episodic_memory(self):
+        """An unfinished or failed plan is not somewhere they went."""
+        text = render_past_trips(
+            [
+                {"destination": "大理", "status": "completed"},
+                {"destination": "三亚", "status": "processing"},
+                {"destination": "成都", "status": "error"},
+            ],
+            [],
+        )
+        assert "大理" in text
+        assert "三亚" not in text, "an in-flight plan must not read as a past trip"
+        assert "成都" not in text, "a failed plan must not read as a past trip"
+
+    def test_nothing_rendered_when_no_trip_completed(self):
+        assert render_past_trips([{"destination": "三亚", "status": "processing"}], []) == ""
 
     def test_renders_feedback(self):
         text = render_past_trips(
