@@ -45,6 +45,8 @@ jobs:
         run: npm ci || npm install
       - name: Type check
         run: npx tsc --noEmit
+      - name: Store behaviour checks
+        run: npm run check:store
       - name: Build
         run: npm run build
 

@@ -14,6 +14,7 @@
 | V2-P1 | Done | 2026-10-14 | 2026-10-16 | 对话式：Redis 会话 + 槽位后处理 + Chat UI + modify_plan |
 | V2-P2 | Done | 2026-10-14 | 2026-10-14 | 内容质量：couple_score 重写 + curated POI + 反馈闭环 |
 | V2-P3 | Done | 2026-10-15 | 2026-10-15 | 工程化：鉴权限流 + 可观测性 + 配置规范化 + 外部 API 韧性 |
+| V3 | Done | 2026-10-16 | 2026-10-16 | 对话记忆 L0–L3 + 会话持久化与恢复（T0.2 本地库初始化待执行） |
 
 ## M0 Completion Checklist
 
@@ -327,3 +328,79 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 
 - `backend/.venv` 曾缺失 V2 新增依赖（`pydantic-settings`/`psycopg`/`psycopg-pool`/`redis`/`slowapi`/`structlog`/`prometheus-fastapi-instrumentator`），旧 `.venv` 直接跑 pytest 会 16 个 collection error。已执行 `pip install -r requirements.txt` 修复；**换机器或清理 venv 后需重跑该命令**。
 - `backend/.pytest_cache` 目录存在权限拒绝，导致无害的 `PytestCacheWarning`（不影响测试结果）。
+
+---
+
+## V3 对话记忆与持久化（2026-10-16）
+
+> 设计与执行计划见 `UPGRADE_V3_CONVERSATION_MEMORY.md`（含 §11 设计修正与未闭环项）。
+
+### 问题起点
+
+用户反馈"对话记忆没有做，要保证这个 Agent 首先是一个可正常对话的 Agent"。
+排查确认三条同时成立：`session_store.get_history()` 定义了但**零调用点**（历史写了从不读）；
+`question` 意图回固定话术；前端只持久化 `session_id`、刷新即丢对话。
+更进一步：PostgreSQL 认证失败 + Redis 不支持 `HELLO`（RESP3），**两个持久化后端
+在本机全程静默降级**，代码里已有的槽位记忆与行程持久化一次都没真正生效。
+
+### P0 环境与地基
+
+- [x] T0.1 修复双问候：StrictMode 双调用挂载 effect，而问候 effect 读的是渲染闭包里的
+  陈旧值。改为 store 幂等 action `ensureGreeting()`，守卫读实时状态
+- [x] T0.4 消除静默降级：`/health` 暴露 `storage.postgres` / `storage.chat`（含失败原因），
+  启动时一次性 ERROR 告警；**并把连接失败超时 30s → 5s**（整套测试 37s → 18s）
+- [x] T0.4+ 存储诊断报根因：原只报 `PoolTimeout`，现用一次直接连接取出
+  `password authentication failed ...` 再上报
+- [x] T0.5 修复 E2E 路由失效：P1.3 把 `/` 改成对话页后 5 个用例仍访问 `/` 并断言表单元素，
+  实际全失效（与既有文档"不破坏"矛盾）；已改从 `/form` 进入并加问候回归守卫
+- [ ] T0.2 本地 PostgreSQL 可达：脚本 `backend/scripts/init_local_db.sql` 已就绪（幂等），
+  **待以超级用户执行一次**；未执行时 PG 往返测试显式 skip 不静默通过
+
+### P1 短期记忆与真对话（L0）
+
+- [x] `services/conversation_store.py`：`chat_sessions` + `chat_messages`（JSONB 槽位、
+  `message_id UNIQUE`、`ON DELETE CASCADE`），幂等 append、优雅降级、`health()`
+- [x] `acall_llm(history=...)` + 新增 `acall_llm_text()`（自由文本，用于必须"真回答"的场景）
+- [x] `handle_chat` 两段式：Call 1 总是跑（意图+槽位，带最近 10 轮记忆）；只有
+  question/greeting 才走 Call 2 生成真回答，规划类用确定性模板（省一次调用）
+- [x] **先落 user 消息再调模型**（回复前关页不丢消息）；`message_id` 透传保证重试幂等
+- [x] 会话 CRUD + `/messages` 端点；首条实质消息自动生成标题
+- [x] 移除聊天链路 Redis（会话迁 PG 后零消费者；限流器本就未用 Redis）
+
+### P2 长期记忆（L1/L2/L3）
+
+- [x] L1 滚动摘要 + `summary_message_count` 游标，增量压缩、与已有摘要合并、溢出满
+  4 条才触发
+- [x] L2 跨会话画像（`user_profiles`，key = 浏览器 `client_id`）：只增不删，被替换的
+  标量留在 `conflicts` 并渲染成"出发地：上海（此前提到过：北京）"
+- [x] L3 情节召回：历史行程 + `plan_feedback` 聚合。**反馈表首次进入在线链路**
+- [x] prompt 组装顺序固定：角色 → L2 → L3 → L1 → L0 真实消息
+- [x] **全部用结构化存储 + SQL 召回，无 embedding** —— 长期记忆与"V2 拒绝 pgvector"并不冲突
+
+### P3 对话恢复与前端
+
+- [x] 存储分工：活动会话存 **sessionStorage**（多标签隔离），localStorage 只存
+  恢复种子 / 侧边栏缓存 / `client_id`
+- [x] `hydrate()`：并行拉会话详情 + 完整记录，水合 messages/slots/planRequest/lastPlanId
+- [x] 恢复硬化：404 → 清指针并新建（#4）；末尾无回复的 user 消息 → "重新生成"（#5），
+  重试复用同一 `message_id` 不重复写（#6）
+- [x] 会话列表 UI（桌面常驻 / 移动端抽屉）：新建、切换、重命名、删除；`storage` 事件
+  跨标签刷新列表（#7）
+- [x] 会话↔行程关联：`session_id` 随 `POST /api/plan` 传入，侧边栏可"查看行程"
+- [x] `npm run check:store`：零依赖 store 行为检查（19/19），补 tsc/build 抓不到的状态缺陷
+
+### V3 验证记录
+
+- [x] 后端 `pytest -q`：**364 passed + 2 skipped**（2 个 skip 均为 PostgreSQL 未初始化，
+  跳过原因显式打印）
+- [x] 前端 `npm run build` 通过（2264 modules，产物 gzip 131.93 kB）+ `npm run check:store` 19/19
+- [ ] 恢复矩阵中依赖真实库的条目（刷新恢复、跨天、多标签、切换）待 T0.2 后按
+  `DEPLOY.md` 手工冒烟清单逐条勾选
+
+### V3 的设计修正（详见计划文档 §11）
+
+| 原计划 | 实际做法 | 原因 |
+|--------|----------|------|
+| `AsyncConnectionPool` 全程异步 | 同步池 + `asyncio.to_thread` | psycopg 异步模式在 Windows 默认 `ProactorEventLoop` 上直接 `InterfaceError`；P0.2 的约束是"不阻塞事件循环"，线程卸载等价且跨平台 |
+| T0.3 移除 Redis 放在 P0 | 并入 P1 | 先删 Redis 会让中间态没有会话存储；等 PG 接过再删，每个提交都是绿的 |
+| "最近 10 轮" | `HISTORY_MESSAGES = 20`（条数） | `get_recent_messages` 单位是消息条数，一轮 = 2 条，初版实际只给了 5 轮 |

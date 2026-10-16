@@ -17,15 +17,19 @@
 
 | 阶段 | 目标 | 状态 | 完成度 |
 |------|------|------|--------|
-| **P0 环境与地基** | 修复静默降级，让持久化真实生效 | 🔄 | 1/5 |
-| **P1 短期记忆与真对话（L0）** ⭐ | 多轮上下文 + 真回答 + 会话落库 | ⬜ | 0/6 |
-| **P2 长期记忆（L1/L2/L3）** | 滚动摘要 + 跨会话画像 + 情节召回 | ⬜ | 0/5 |
-| **P3 对话恢复与前端** ⭐ | 刷新/中断/多标签恢复 + 会话切换 | ⬜ | 0/7 |
-| **P4 收尾** | 文档、冒烟、回归 | ⬜ | 0/3 |
+| **P0 环境与地基** | 修复静默降级，让持久化真实生效 | 🔄 | 4/5（T0.2 待你跑初始化脚本） |
+| **P1 短期记忆与真对话（L0）** ⭐ | 多轮上下文 + 真回答 + 会话落库 | ✅ | 6/6 |
+| **P2 长期记忆（L1/L2/L3）** | 滚动摘要 + 跨会话画像 + 情节召回 | ✅ | 5/5 |
+| **P3 对话恢复与前端** ⭐ | 刷新/中断/多标签恢复 + 会话切换 | ✅ | 7/7 |
+| **P4 收尾** | 文档、冒烟、回归 | 🔄 | 进行中 |
 
 > 硬门槛：每阶段结束须「后端 pytest 全绿 + 前端 `tsc -b && vite build` 通过」。
 > 本机未安装 Playwright 浏览器，E2E 不作为本轮的验收手段（见 §7）。
 > **可裁剪**：P2 整体可后置，不阻塞 P1/P3；P1+P3 即"可正常对话且不丢对话"的最小可用集。
+>
+> **执行结果（2026-10-16）**：P0.1/P0.3/P0.4/P0.5 与 P1/P2/P3 全部完成；
+> 后端 **364 passed + 2 skipped**，前端 build 通过 + `npm run check:store` 19/19。
+> 期间发现两处必须记录的设计修正，见 §11。
 
 ---
 
@@ -341,59 +345,65 @@ Chat 头部显示会话标题；画像可折叠展示并允许纠正。
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
 | T0.1 ⭐ | 修复双问候：`ensureGreeting()` 幂等 action | ✅ | chatStore.ts + Chat.tsx（build + node 断言通过） |
-| T0.2 ⭐ | 本地 PostgreSQL 可达：创建 `coupletrip` 角色/库（或更正 `PG_DSN`），附脚本 + DEPLOY 步骤 | ⬜ | `backend/scripts/init_local_db.sql` + DEPLOY.md |
-| T0.3 ⭐ | 存储收敛：按 §6.1 移除聊天链路 Redis（`session_store.py` 退役、compose 去 redis、requirements 去依赖） | ⬜ | 三处改动 + 文档说明触发条件 |
-| T0.4 ⭐ | 消除静默降级：`/health` 暴露 `storage.postgres`；启动时一次性 ERROR 告警 | ⬜ | main.py + storage |
-| T0.5 | 修复 E2E 路由失效（`/` → `/form`），保持 CI 用例有效 | ⬜ | e2e/full_flow.spec.ts |
+| T0.2 ⭐ | 本地 PostgreSQL 可达：创建 `coupletrip` 角色/库（或更正 `PG_DSN`），附脚本 + DEPLOY 步骤 | ⏸ 脚本已就绪，**待你执行** | `backend/scripts/init_local_db.sql` + DEPLOY.md |
+| T0.3 ⭐ | 存储收敛：移除聊天链路 Redis（`session_store.py` 退役、compose 去 redis、requirements 去依赖） | ✅ | 见 §11：**并入 P1 执行**（需先有新存储接管，否则中间态是坏的） |
+| T0.4 ⭐ | 消除静默降级：`/health` 暴露存储状态；启动时一次性 ERROR 告警 | ✅ | main.py + storage + `test_storage_health.py`（8 例） |
+| T0.5 | 修复 E2E 路由失效（`/` → `/form`），保持 CI 用例有效 | ✅ | e2e/full_flow.spec.ts（另加问候回归守卫；本机无浏览器未执行） |
 
-**P0 出口**：`/health` 显示 postgres ok；`PlanStore` 真实往返成功；pytest 全绿。
+**P0 出口**：`/health` 显示 postgres ok（**待 T0.2**）；`PlanStore` 真实往返成功（**待 T0.2**）；pytest 全绿 ✅。
+**顺带修复**：存储诊断原本只报 `PoolTimeout`，现在报真实原因（`password authentication failed ...`），
+并把连接失败超时从 30s 降到 5s（整套测试 37s → 18s）。
 
 ### P1 短期记忆与真对话（L0）⭐
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T1.1 ⭐ | §5.1 三张表 DDL + `ConversationStore`（异步池、幂等 append、优雅降级、`health()`） | ⬜ | services/conversation_store.py |
-| T1.2 ⭐ | `acall_llm(history=...)` + 新增 `acall_llm_text()` | ⬜ | services/llm.py |
-| T1.3 ⭐ | `handle_chat` 接入 history + 先落 user 消息 + 落 assistant + 自动标题 | ⬜ | agents/conversation.py |
-| T1.4 ⭐ | question/greeting 走第二调用真回答（含 mock 兜底话术升级） | ⬜ | agents/conversation.py + prompts |
-| T1.5 ⭐ | 会话 CRUD + messages 端点（§5.5 前 6 个） | ⬜ | main.py + schemas/chat.py |
-| T1.6 ⭐ | 后端测试：多轮记忆传入、真回答分支、CRUD、幂等、PG 不可达降级 | ⬜ | tests/ |
+| T1.1 ⭐ | §5.1 三张表 DDL + `ConversationStore`（幂等 append、优雅降级、`health()`） | ✅ | services/conversation_store.py |
+| T1.2 ⭐ | `acall_llm(history=...)` + 新增 `acall_llm_text()` | ✅ | services/llm.py |
+| T1.3 ⭐ | `handle_chat` 接入 history + 先落 user 消息 + 落 assistant + 自动标题 | ✅ | agents/conversation.py |
+| T1.4 ⭐ | question/greeting 走第二调用真回答（含 mock 兜底话术升级） | ✅ | agents/conversation.py + prompts/chat_reply_prompt.md |
+| T1.5 ⭐ | 会话 CRUD + messages 端点（§5.5 前 6 个） | ✅ | main.py + schemas/chat.py |
+| T1.6 ⭐ | 后端测试：多轮记忆传入、真回答分支、CRUD、幂等、PG 不可达降级 | ✅ | test_conversation_memory.py(21) / test_chat_sessions_api.py(23) / test_conversation_store_pg.py |
 
-**P1 出口**：两轮对话可复现"第二轮引用第一轮"；消息真实落库；`message_id` 去重生效；pytest 全绿。
+**P1 出口**：两轮对话可复现"第二轮引用第一轮" ✅（单测断言 history 真的进了 prompt，且加载顺序为
+"先读窗口再追加当前轮"）；消息真实落库 ⏸（待 T0.2）；`message_id` 去重 ✅；pytest 全绿 ✅。
 
 ### P2 长期记忆（L1/L2/L3）
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T2.1 ⭐ | L1 滚动摘要：`summary` 字段 + 超窗口时增量压缩 + 注入 system prompt | ⬜ | conversation_store + conversation.py |
-| T2.2 ○ | L2 画像：`user_profiles` + 提取/合并规则 + `GET/PATCH /api/profile` | ⬜ | conversation_store + main.py |
-| T2.3 ○ | L3 情节召回：最近行程 + `plan_feedback` 聚合进 prompt + `GET /api/chat/recall` | ⬜ | conversation.py + main.py |
-| T2.4 ○ | 记忆预算：token 上限、摘要触发阈值、单条截断、prompt 组装顺序固化 | ⬜ | conversation.py |
-| T2.5 ○ | 记忆测试：摘要触发与幂等、画像合并与冲突、召回不含重复目的地 | ⬜ | tests/ |
+| T2.1 ⭐ | L1 滚动摘要：`summary` + `summary_message_count` 游标 + 增量压缩 + 注入 prompt | ✅ | agents/memory.py + conversation_store |
+| T2.2 ○ | L2 画像：`user_profiles` + 提取/合并规则 + `GET/PATCH /api/profile` | ✅ | agents/memory.py + main.py |
+| T2.3 ○ | L3 情节召回：最近行程 + `plan_feedback` 聚合进 prompt + `GET /api/chat/recall` | ✅ | agents/memory.py + conversation.py |
+| T2.4 ○ | 记忆预算：窗口 10 轮(20 条)、溢出满 4 条才摘要、单条截断 2000 字、组装顺序固化 | ✅ | agents/memory.py（顺序由测试钉住） |
+| T2.5 ○ | 记忆测试：摘要触发、画像合并与冲突、召回渲染、prompt 组装顺序 | ✅ | tests/test_memory.py（43 例） |
 
-**P2 出口**：20 轮以上的长对话仍能引用早期内容；新会话能继承画像；prompt 能说出"上次去过哪"。
+**P2 出口**：长对话仍能引用早期内容 ✅（摘要+游标机制与注入均有单测）；新会话继承画像 ✅；
+prompt 能说出"上次去过哪" ✅。
+**设计落实**：L1–L3 **全部用结构化存储 + SQL 召回，无 embedding** —— 这是"要有长期记忆"与
+"V2 拒绝 pgvector"并不冲突的关键（初版把两者混为一谈，见 §11）。
 
 ### P3 对话恢复与前端 ⭐
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T3.1 ⭐ | 存储分工（§5.6）+ 水合 messages/slots/planRequest + `hydrating` 态 | ⬜ | chatStore.ts |
-| T3.2 ⭐ | 会话列表 UI：新建/切换/重命名/删除（桌面常驻 + 移动端抽屉） | ⬜ | components/Chat/SessionList.tsx |
-| T3.3 ⭐ | 恢复硬化：404 → 新建会话；末尾无回复的 user 消息 → "重新生成"；`message_id` 幂等 | ⬜ | 恢复矩阵 #4/#5/#6 |
-| T3.4 ⭐ | 多标签一致性：本标签 sessionStorage + `storage` 事件刷新列表 | ⬜ | 恢复矩阵 #7 |
-| T3.5 ⭐ | 页面切换审计：Chat↔loading↔result↔form，"重新规划"不得清空会话 | ⬜ | 恢复矩阵 #9 |
-| T3.6 ○ | 会话↔行程关联：`last_plan_id` 回写与列表展示 | ⬜ | 恢复矩阵 #1 |
-| T3.7 ⭐ | 前端类型 + `tsc -b && vite build` 通过；`npm run check:store` | ⬜ | types/chat.ts + package.json |
+| T3.1 ⭐ | 存储分工（§5.6）+ 水合 messages/slots/planRequest + `hydrating` 态 | ✅ | chatStore.ts |
+| T3.2 ⭐ | 会话列表 UI：新建/切换/重命名/删除（桌面常驻 + 移动端抽屉） | ✅ | components/Chat/SessionList.tsx |
+| T3.3 ⭐ | 恢复硬化：404 → 新建会话；末尾无回复的 user 消息 → "重新生成"；`message_id` 幂等 | ✅ | 恢复矩阵 #4/#5/#6（`/messages` 现返回 `message_id` 作为重试依据） |
+| T3.4 ⭐ | 多标签一致性：本标签 sessionStorage + `storage` 事件刷新列表 | ✅ | 恢复矩阵 #7 |
+| T3.5 ⭐ | 页面切换审计：Chat↔loading↔result↔form，"重新规划"不得清空会话 | ✅ | 恢复矩阵 #9（hydrate 按 page load 缓存，不覆盖内存态） |
+| T3.6 ○ | 会话↔行程关联：`last_plan_id` 回写与列表展示 | ✅ | main.py + plan.ts + SessionList（可点"查看行程"） |
+| T3.7 ⭐ | 前端类型 + `tsc -b && vite build` 通过；`npm run check:store` | ✅ | package.json + scripts/check-chat-store.cjs（19/19） |
 
-**P3 出口**：恢复矩阵 1–7、9 逐条手工验证通过；build 通过。
+**P3 出口**：恢复矩阵 1–7、9 逐条手工验证 ⏸（待 T0.2 后按 §8 清单执行）；build 通过 ✅。
 
 ### P4 收尾
 
 | 任务 ID | 内容 | 状态 | 产出 |
 |---------|------|------|------|
-| T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS 记 V3 | ⬜ | memory/*.md |
-| T4.2 | 手工冒烟清单执行并记录（§8） | ⬜ | memory/DEPLOY.md |
-| T4.3 | 回归：pytest 全绿 + build 通过 | ⬜ | — |
+| T4.1 | 文档：ARCHITECTURE API/数据模型、DEPLOY 环境与 Redis 触发条件、PROGRESS/GOALS/BOOTSTRAP 记 V3 | ✅ | memory/*.md |
+| T4.2 | 手工冒烟清单（§8）执行并记录 | ⏸ 待 T0.2 | memory/DEPLOY.md |
+| T4.3 | 回归：pytest 全绿 + build 通过 + check:store | ✅ | 364 passed + 2 skipped；build 通过；19/19 |
 
 ---
 
@@ -448,3 +458,70 @@ Chat 头部显示会话标题；画像可折叠展示并允许纠正。
 | P2.3 用户反馈表 | ✅ 已交付但仅离线脚本使用 | T2.3 首次进入在线链路（L3 召回） |
 | P3.2 可观测性 | ✅ structlog + /metrics | T0.4 借 `/health` 暴露存储状态 |
 | E2E 5 用例 | 文档称"不破坏"，实际全失效 | T0.5 修复路由 |
+
+---
+
+## 11. 执行中的设计修正（必须记录）
+
+### 11.1 存储层不能用 psycopg 异步模式 —— 改线程卸载
+
+**计划原文**：「**必须异步**。用 `psycopg_pool.AsyncConnectionPool` + `await`，全程不阻塞事件循环。」
+
+**实测结果**：在 Windows 上直接失败 ——
+
+```
+InterfaceError: Psycopg cannot use the 'ProactorEventLoop' to run in async mode.
+Please use a compatible event loop, for instance by running
+'asyncio.run(..., loop_factory=asyncio.SelectorEventLoop(...))'
+```
+
+psycopg 的异步模式依赖 `add_reader`/`add_writer`，而 Windows 默认的
+`ProactorEventLoop` 不提供；Windows 又是本项目的主要开发平台。若坚持异步驱动，
+本机与 uvicorn 默认配置下整套对话持久化都会失效。
+
+**修正**：改用**同步** `ConnectionPool`，所有 DB 调用经 `asyncio.to_thread` 卸载到
+工作线程。P0.2 的要求是"**不阻塞事件循环**"，而不是"必须用异步驱动"——
+线程卸载同样满足，且在 Linux / Windows 行为一致。公开 API 仍是 `async def`，
+调用方无需感知线程。
+
+**顺带**：一开始为异步池写了「按事件循环缓存池」的逻辑（异步连接绑定创建它的
+loop）。改成同步池后该问题不存在，这段复杂度已删除。
+
+### 11.2 T0.3（移除 Redis）并入 P1 执行
+
+计划把"移除聊天链路 Redis"放在 P0，但 Redis 是当时**唯一**的会话存储：
+先删掉它、再在 P1 建新存储，中间态是坏的（会话无处可存），提交历史里会出现
+一个不可用的版本。
+
+**修正**：P0 只做"让存储状态可见"（T0.4），保留仍可用的降级路径；等 P1 的
+PostgreSQL 存储接管后再删 Redis —— 该提交因此是自洽的（"会话从 Redis 迁到
+PostgreSQL"），每个提交都是绿的。
+
+### 11.3 记忆窗口的单位
+
+计划写「最近 10 轮」，而 `get_recent_messages(limit=N)` 的单位是**消息条数**，
+一次"轮"是 user+assistant 两条。初版 `HISTORY_TURNS = 10` 实际只给了 5 轮。
+
+**修正**：明确为 `HISTORY_EXCHANGES = 10` / `HISTORY_MESSAGES = 20`，摘要触发
+与溢出切片都以"消息条数"为准，避免再次混淆。
+
+### 11.4 存储诊断必须报根因
+
+计划的 T0.4 只要求"暴露状态"。实测发现 `pool.open(wait=True)` 失败时抛的是
+`PoolTimeout: pool initialization incomplete after 5 sec`，而真实原因是
+`password authentication failed for user "coupletrip"` —— 前者把排查引向了连接超时
+这个错误方向。现在失败时会用一次直接连接取出根因再上报。
+
+### 11.5 未闭环项（需要你执行）
+
+1. **T0.2**：本机 PostgreSQL 18.6（`D:\Software\Postgresql18`）对所有连接要求
+   scram-sha-256，而 `.env` 里的 `coupletrip / coupletrip_dev` 认证失败。已在
+   `backend/scripts/init_local_db.sql` 写好幂等初始化，需以超级用户执行一次：
+   ```
+   "D:\Software\Postgresql18\bin\psql.exe" -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql
+   ```
+   执行前 `tests/test_conversation_store_pg.py` 会以
+   「PostgreSQL unavailable — chat persistence NOT verified」**显式跳过**（不会静默通过）。
+2. **T3.5 / T4.2**：恢复矩阵中依赖真实数据库的条目（刷新恢复、跨天、多标签、
+   会话切换）需在 T0.2 完成后按 §8 的手工冒烟清单逐条勾选。
+3. **E2E**：本机未安装 Playwright 浏览器，T0.5 修好的 5+2 个用例仅在 CI 生效。

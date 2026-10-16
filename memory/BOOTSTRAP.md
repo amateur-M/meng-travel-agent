@@ -4,20 +4,26 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2 升级执行计划（P0–P3）已完成**。Docker 一键部署 + Playwright E2E + CI 流水线已落地；后端测试 **267 passed + 1 skipped**，前端 `tsc -b` + `vite build` 通过。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **364 passed + 2 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 19/19。
 
-**V2 升级摘要**（详见 [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) 与 [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md)）：
-- **P0 地基修复**：PostgreSQL 行程持久化 + 补齐 4 个 REST 端点；LLM 全异步化（`acall_llm`）；SSE 断线重连不重跑（`plan_id` + `GET /api/plan/{id}/stream`）
-- **P1 对话式**：`POST /api/chat` + Redis 会话 + 槽位确定性后处理；Chat UI（`/` → Chat，`/form` 保留）；`modify_plan` 增量调整
-- **P2 内容质量**：`couple_score` 重写（rating 主导）+ `data/curated_pois.json` 人工精选 + 👍/👎 反馈闭环（**未上 pgvector**）
-- **P3 工程化**：`X-API-Key` 鉴权 + slowapi 限流 + structlog/Prometheus + pydantic-settings 配置分层 + 外部 API 重试与熔断
+**V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
+起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：
+- **L0 短期记忆 + 真对话**：会话/消息迁 PostgreSQL（`ConversationStore`）；`acall_llm(history=...)` 真正把多轮上下文送进 prompt；`question`/`greeting` 走 `acall_llm_text()` 真回答，规划类用确定性模板省一次调用；**先落 user 消息再调模型**、`message_id` 幂等
+- **L1/L2/L3 长期记忆**：会话内滚动摘要（带覆盖游标，增量压缩）+ 跨会话画像（只增不删，冲突保留旧值）+ 情节召回（历史行程与 `plan_feedback`，反馈表首次进入在线链路）。**全部结构化存储 + SQL 召回，无 embedding**
+- **持久化与恢复**：活动会话存 sessionStorage（多标签隔离）、localStorage 存恢复种子/缓存/`client_id`；刷新水合完整记录；404 → 新建；末尾无回复 → "重新生成"；会话列表可新建/切换/重命名/删除；会话↔行程互相关联
+- **可观测性**：`/health` 暴露各存储真实状态与失败原因（原只报 `PoolTimeout`，掩盖了认证失败）；启动 ERROR 告警；连接失败超时 30s→5s
+- **移除 Redis**：会话迁 PG 后 Redis 零消费者（限流器本就未用），依赖/compose/env 均已清理
 
 **下一步行动**：
-1. 唯一跳过项：OpenTelemetry tracing（P3.2.3）——LLM 与 Amap/QWeather 调用暂无 span
-2. 项目已交付，可进入维护/迭代阶段
+1. **执行本地库初始化**（V3 唯一未闭环项）：`"D:\Software\Postgresql18\bin\psql.exe" -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql`，然后按 [DEPLOY.md](DEPLOY.md) §五 手工冒烟清单逐条验证（刷新恢复、多标签、长对话摘要、跨会话画像）
+2. OpenTelemetry tracing（V2 唯一跳过项）——LLM 与 Amap/QWeather 调用暂无 span
 3. 如需扩展：多用户协作编辑、更多目的地、离线缓存等
 
-**环境提醒**：`backend/.venv` 需与 `requirements.txt` 保持同步（`pip install -r requirements.txt`）；曾因缺少 V2 新增依赖导致 pytest 直接 16 个 collection error。
+**环境提醒**：
+- `backend/.venv` 需与 `requirements.txt` 保持同步（`pip install -r requirements.txt`）；曾因缺少 V2 依赖导致 pytest 直接 16 个 collection error
+- PostgreSQL 未初始化时应用**不会崩**，只是不持久化；`/health` 会显示 `degraded` 且带原因，PG 往返测试会显式 skip（不静默通过）
+- 本机未安装 Playwright 浏览器，E2E 仅在 CI 生效
+- 存储层用**同步 psycopg 池 + `asyncio.to_thread`**：psycopg 异步模式在 Windows 默认 `ProactorEventLoop` 上会直接报错，不要改回 `AsyncConnectionPool`
 
 ---
 
@@ -26,12 +32,13 @@
 | 文件 | 用途 |
 |------|------|
 | [ROADMAP.md](ROADMAP.md) | 实现路线图（8 个里程碑 + 验收标准 + 依赖关系） |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构（LangGraph 设计、API 协议、数据流、目录结构） |
-| [PROGRESS.md](PROGRESS.md) | 开发进度（里程碑 + V2 P0–P3 完成清单） |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构（LangGraph 设计、记忆分层、API 协议、数据模型） |
+| [PROGRESS.md](PROGRESS.md) | 开发进度（里程碑 + V2/V3 完成清单） |
 | [GOALS.md](GOALS.md) | 当前迭代目标与验证记录 |
 | [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) | V2 技术债诊断与优先级重排理由 |
 | [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md) | V2 可跟踪执行计划（任务 ID + 状态） |
-| [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI） |
+| [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md) | V3 对话记忆设计 + P0–P4 任务表 + §11 设计修正与未闭环项 |
+| [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI / 手工冒烟清单） |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
 ---
@@ -43,12 +50,14 @@
 1. 先读本文件（memory/BOOTSTRAP.md）—— 了解项目是什么、处于什么阶段
 2. 再读 memory/ROADMAP.md —— 了解当前里程碑、已完成工作、下一步任务
 3. 再读 memory/UPGRADE_V2_AUDIT.md —— 了解 V2 升级的 6 项技术债诊断与 P0-P3 优先级重排理由
-4. 再读 memory/UPGRADE_V2_EXECUTION_PLAN.md —— 了解可跟踪执行计划（41 个任务带 ID+状态，持久化用 PostgreSQL）
-5. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、API 协议
+4. 再读 memory/UPGRADE_V2_EXECUTION_PLAN.md —— 了解 V2 可跟踪执行计划（任务带 ID+状态）
+5. 再读 memory/UPGRADE_V3_CONVERSATION_MEMORY.md —— 了解对话记忆分层（L0–L3）、12 场景恢复矩阵、**§11 设计修正与未闭环项**
+6. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 升级执行计划已完成。
+当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成
+（唯一未闭环项：本地 PostgreSQL 需以超级用户执行一次 `backend/scripts/init_local_db.sql`）。
 
 ---
 

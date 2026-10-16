@@ -131,6 +131,58 @@ class TripPlanState(TypedDict):
 - `adapt_weather` 内部：若全部晴天，无操作；若有雨天/高温，触发方案切换（rule-based 兜底，LLM 路径可选增强）。
 - 三路 fan-out 的 `current_phase` 用 `_latest_str` reducer、`warnings` 用 `operator.add`，避免并行写入冲突。
 
+### 2.4 对话记忆分层（V3）
+
+Agent 从"单轮提取器"变成"能持续对话"的关键。四层各司其职，**L1–L3 全部用结构化
+存储 + SQL 召回实现，不需要 embedding** —— "要有长期记忆"与"V2 拒绝 pgvector"
+并不冲突，二者曾被混为一谈。
+
+| 层 | 名称 | 内容 | 存放 | 注入方式 |
+|----|------|------|------|----------|
+| **L0** | 工作记忆 | 最近 10 轮（20 条）原文 | `chat_messages` | 真实多轮 Human/AI 消息 |
+| **L1** | 会话内长期记忆 | 滑出窗口部分的滚动摘要 | `chat_sessions.summary` + `summary_message_count` 游标 | system prompt 段落 |
+| **L2** | 跨会话画像 | 出发地/节奏/偏好/预算区间/忌口 | `user_profiles`（key = 浏览器 `client_id`） | system prompt 段落 |
+| **L3** | 情节记忆 | 历史行程、去过的目的地、活动级 👍/👎 | `plans` + `plan_feedback` | system prompt 段落 |
+| **L4** | 语义检索 | 模糊语义召回 | — | **延后**；需要时先用 `tsvector`/`pg_trgm`，仍不必上 pgvector |
+
+**prompt 组装顺序固定**（由测试钉住）：角色与规则 → L2 画像 → L3 行程 → L1 摘要 →
+L0 真实消息。最持久的事实在前，最易变的在后。
+
+**L1 的增量语义**：`summary_message_count` 记录摘要已覆盖多少条消息，因此每次只需
+压缩"新滑出的那一段"，并与已有摘要合并（送给模型时带"已有摘要"，不是覆盖）。
+溢出不足 `SUMMARY_MIN_NEW_MESSAGES`（4 条）不触发，避免每轮多花一次 LLM 调用。
+
+**L2 的合并规则**：只增不删。集合字段取并集；标量被替换时旧值进入 `conflicts`，
+prompt 会渲染成"出发地：上海（此前提到过：北京）"，而不是假装用户没说过。
+
+**两段式 LLM 调用**（成本控制）：
+
+```
+Call 1（总是）：意图 + 槽位 + modify_patch  ← 结构化 JSON，带 L0 history
+Call 2（仅 question / greeting）：自由文本真回答
+规划类（planning_intent / planning_ready / modify_plan）：确定性模板，不额外调用
+```
+
+**数据模型（PostgreSQL，与 `plans` 同库）**：
+
+```sql
+chat_sessions(session_id PK, title, summary, summary_message_count,
+              slots JSONB, plan_request JSONB, last_plan_id, client_id,
+              created_at, updated_at)
+chat_messages(id PK, session_id FK→chat_sessions ON DELETE CASCADE,
+              message_id UNIQUE, role, content, created_at)
+user_profiles(client_id PK, user_id, profile JSONB, updated_at)
+```
+
+`message_id` 唯一约束是幂等的支点：客户端重试同一个 `message_id` 时
+`ON CONFLICT DO NOTHING`，不会把用户那句话写两遍。
+
+**存储层为何是"同步驱动 + 线程卸载"**：`services/conversation_store.py` 用同步
+`psycopg` 连接池，所有 DB 调用经 `asyncio.to_thread` 卸载。psycopg 的**异步**模式
+在 Windows 默认的 `ProactorEventLoop` 上直接报 `InterfaceError`，而 Windows 是主要
+开发平台。P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台一致。
+（注：`PlanStore` 仍是同步池在 async 端点里直接调用，属遗留不一致。）
+
 ---
 
 ## 3. 前后端通信接口
@@ -139,12 +191,22 @@ class TripPlanState(TypedDict):
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/health` | 健康检查 |
-| `POST` | `/api/plan` | 提交行程规划请求，返回 `plan_id` |
+| `GET` | `/health` | 健康检查 + **存储状态**（`storage.postgres` / `storage.chat`，含失败原因） |
+| `POST` | `/api/plan` | 提交行程规划请求，返回 `plan_id`（可带 `session_id` 关联对话） |
 | `GET` | `/api/plan/{plan_id}` | 查询已完成的行程详情 |
 | `GET` | `/api/plan/{plan_id}/stream` | SSE 端点，流式推送规划进度 |
 | `GET` | `/api/plan/history` | 历史行程列表（分页） |
 | `DELETE` | `/api/plan/{plan_id}` | 删除历史行程 |
+| `POST` | `/api/plan/{plan_id}/feedback` | 活动级 👍/👎 反馈（L3 情节记忆的数据源） |
+| `POST` | `/api/chat` | 对话：意图 + 槽位 + 回复（V3：带记忆、落库、幂等） |
+| `GET` | `/api/chat/sessions` | 对话列表（分页，最近活跃倒序，驱动侧边栏） |
+| `GET` | `/api/chat/sessions/{id}` | 会话详情（slots / summary / plan_request / last_plan_id） |
+| `GET` | `/api/chat/sessions/{id}/messages` | 完整对话记录（分页，含 `message_id` 供幂等重试） |
+| `PATCH` | `/api/chat/sessions/{id}` | 重命名会话 |
+| `DELETE` | `/api/chat/sessions/{id}` | 删除会话（消息级联删除） |
+| `GET` | `/api/profile` | L2 跨会话画像读取 |
+| `PATCH` | `/api/profile` | L2 画像手工纠正（沿用同一套合并规则，不抹掉已学到的） |
+| `GET` | `/api/chat/recall` | L3 情节记忆预览（历史行程 + 活动反馈） |
 
 **POST /api/plan 请求体**：
 
@@ -156,7 +218,8 @@ class TripPlanState(TypedDict):
   "end_date": "2026-09-03",
   "budget": 5000,
   "preferences": ["浪漫", "美食", "自然"],
-  "pace": "轻松"
+  "pace": "轻松",
+  "session_id": "对话会话 ID（可选，传入则行程会关联回该对话）"
 }
 ```
 
@@ -167,6 +230,17 @@ class TripPlanState(TypedDict):
   "plan_id": "uuid",
   "status": "processing",
   "stream_url": "/api/plan/uuid/stream"
+}
+```
+
+**POST /api/chat 请求体**：
+
+```json
+{
+  "message": "预算加到8千",
+  "session_id": "可选，首次不传则新建",
+  "client_id": "浏览器侧稳定 id（localStorage），用于会话隔离与 L2 画像",
+  "message_id": "客户端生成的轮次 id；同 id 重试不会重复写入"
 }
 ```
 
@@ -326,3 +400,16 @@ meng-travel-agent/
 | 预算降级在 apply_budget 内部实现为子循环 | 预算可能多次超标（替换后仍超标），内部循环比条件边更简洁 |
 | SSE 而非 WebSocket | 单向推送足够，SSE 浏览器原生支持，无需额外库 |
 | 前端 Vite 代理后端 | 开发环境免 CORS 配置，生产环境由 Nginx 反向代理 |
+
+### 6.1 V3 对话记忆的决策（2026-10-16）
+
+| 决策 | 理由 |
+|------|------|
+| 会话与消息存 **PostgreSQL**，而非 Redis | Redis 的 30 分钟 TTL 意味着"明天回来"从零开始；且它是当时唯一的会话存储、却在本机因 RESP3 握手失败而全程静默降级。会话迁 PG 后 Redis 零消费者，故整体移除（`requirements`/`compose`/`env`）。**触发条件**：多 worker 部署时才为 SSE 事件扇出（`plan_streams` 是进程内存）与共享限流计数重新引入 broker，与聊天记忆无关 |
+| 长期记忆用 **结构化存储 + SQL 召回**，不用 pgvector | L1–L3 的事实都是可结构化/可确定的：摘要是文本、画像是固定 schema、情节是"最近 N 个 plan + 反馈聚合"。真正需要 embedding 的只有模糊语义召回（L4），而那时 `tsvector`/`pg_trgm` 往往已经够用 |
+| 存储层**同步驱动 + `asyncio.to_thread`** | psycopg 异步模式不支持 Windows 默认的 `ProactorEventLoop`；P0.2 的约束是"不阻塞事件循环"，线程卸载等价且跨平台 |
+| 会话/槽位历史**先落 user 消息再调模型** | 浏览器在回复返回前关页时，用户那句话不丢；水合时发现"末尾 user 无回复"即提供"重新生成" |
+| `message_id` **唯一约束**做幂等 | 客户端重试（断网、刷新后重试）不会把同一句话写两遍 |
+| 活动会话存 **sessionStorage**，localStorage 只存种子/缓存/client_id | 两个标签页打开同一会话会互相把对方轮次插进同一份记录，必须按标签隔离；localStorage 只负责"新标签页从哪继续"与首屏秒下 |
+| 问候语是**前端本地播种**，不进服务端记录 | 它是 UI 招呼而非对话内容；写入会污染 L0 窗口与摘要。代价：刷新后若已有真实对话，问候不再出现（与主流对话产品一致） |
+| 前端零依赖 store 检查（`npm run check:store`） | 无 vitest/jest，而 tsc+build 抓不到"问候出现两次"这类状态缺陷；用 vite 自带的 esbuild 打包 store 在 node 里断言，零新增依赖。局限：测不到 React effect 接线与网络路径 |
