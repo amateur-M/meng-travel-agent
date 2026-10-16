@@ -23,14 +23,19 @@ logger = logging.getLogger("coupletrip")
 
 _redis: Optional[aioredis.Redis] = None
 _redis_unavailable = False
+_redis_error: Optional[str] = None
 
 SESSION_TTL = 1800  # 30 minutes
 _SLOT_FIELDS = ("destination", "start_date", "end_date", "budget", "origin", "preferences", "pace")
 
 
 async def _get_redis() -> Optional[aioredis.Redis]:
-    """Return the shared async Redis client, initialising on first call."""
-    global _redis, _redis_unavailable
+    """Return the shared async Redis client, initialising on first call.
+
+    The failure reason is kept in ``_redis_error`` so ``health()`` can report
+    it (T0.4) instead of the degradation living only in a warning log.
+    """
+    global _redis, _redis_unavailable, _redis_error
     if _redis is not None:
         return _redis
     if _redis_unavailable:
@@ -40,9 +45,11 @@ async def _get_redis() -> Optional[aioredis.Redis]:
         client = aioredis.from_url(settings.redis_url, decode_responses=True)
         await client.ping()
         _redis = client
+        _redis_error = None
         logger.info("SessionStore: Redis connected")
         return client
     except Exception as exc:
+        _redis_error = f"{type(exc).__name__}: {exc}"
         logger.warning("SessionStore: Redis unavailable — sessions will not persist: %s", exc)
         _redis_unavailable = True
         return None
@@ -127,6 +134,27 @@ class SessionStore:
             await r.delete(_session_key(session_id), _history_key(session_id))
         except Exception as exc:
             logger.warning("SessionStore.clear failed: %s", exc)
+
+    # ── T0.4: Storage visibility ──────────────────────────────────
+
+    async def health(self) -> dict:
+        """Report Redis connectivity for ``/health``. Never raises."""
+        r = await _get_redis()
+        if r is None:
+            return {
+                "configured": bool(settings.redis_url),
+                "connected": False,
+                "error": _redis_error or "client unavailable",
+            }
+        try:
+            await r.ping()
+            return {"configured": True, "connected": True, "error": None}
+        except Exception as exc:
+            return {
+                "configured": True,
+                "connected": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
 
 # ── Module-level singleton ───────────────────────────────────────────

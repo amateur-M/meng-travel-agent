@@ -3,6 +3,7 @@
 import json
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from typing import AsyncGenerator, Optional
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -20,6 +21,7 @@ from agents.state import AgentState
 from agents.graph import graph
 from agents.conversation import handle_chat
 from services.storage import plan_store, generate_plan_id
+from services.session_store import session_store
 from deps import verify_api_key
 from config.settings import settings
 from logging_config import configure_logging
@@ -29,10 +31,47 @@ configure_logging(json_logs=settings.json_logs)
 
 logger = logging.getLogger("coupletrip")
 
+
+# ── T0.4: Storage visibility ─────────────────────────────────────
+#
+# The V2 persistence layer degraded silently: with the database unreachable,
+# every PlanStore call returned None/False/[] and the only trace was a
+# warning, so "the feature is broken" looked identical to "nothing was
+# saved yet".  Storage state is now probed once at startup and exposed on
+# /health, so a misconfiguration is impossible to miss.
+
+async def _report_storage_status() -> None:
+    """Log the real connectivity of every storage backend, once, at startup."""
+    pg = await asyncio.to_thread(plan_store.health)
+    if pg["connected"]:
+        logger.info("storage: postgres connected")
+    else:
+        logger.error(
+            "storage: postgres UNAVAILABLE — plan persistence is DISABLED (reason: %s)",
+            pg["error"],
+        )
+
+    redis_status = await session_store.health()
+    if redis_status["connected"]:
+        logger.info("storage: redis connected")
+    else:
+        logger.error(
+            "storage: redis UNAVAILABLE — chat sessions will NOT persist (reason: %s)",
+            redis_status["error"],
+        )
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    await _report_storage_status()
+    yield
+
+
 app = FastAPI(
     title="CoupleTrip API",
     description="AI-powered couple travel planning agent",
     version="0.3.0",
+    lifespan=lifespan,
 )
 
 # P3.2: Prometheus metrics 暴露 /metrics
@@ -58,7 +97,24 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "coupletrip"}
+    """Liveness + storage state.
+
+    Always returns HTTP 200 so this stays a liveness probe (the Docker
+    healthcheck and the frontend's ``depends_on: service_healthy`` rely on
+    it). Read ``storage.*`` for the actual persistence state: ``status``
+    becomes ``degraded`` as soon as a backend is unreachable.
+    """
+    postgres = await asyncio.to_thread(plan_store.health)
+    redis = await session_store.health()
+    degraded = not postgres["connected"] or not redis["connected"]
+    return {
+        "status": "degraded" if degraded else "ok",
+        "service": "coupletrip",
+        "storage": {
+            "postgres": postgres,
+            "redis": redis,
+        },
+    }
 
 
 # ── Chat endpoint (P1.1) ─────────────────────────────────────────

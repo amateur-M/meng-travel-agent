@@ -31,35 +31,53 @@ logger = logging.getLogger("coupletrip")
 
 _pool: Optional[ConnectionPool] = None
 _pool_unavailable = False
+_pool_error: Optional[str] = None
 
 
 def _get_pool() -> Optional[ConnectionPool]:
     """Return the shared connection pool, initialising it on first call.
 
     If the database is unreachable, marks itself unavailable so subsequent
-    calls skip silently instead of retrying on every request.
+    calls skip silently instead of retrying on every request.  The reason is
+    kept in ``_pool_error`` so ``health()`` can report *why* rather than
+    leaving operators to guess (T0.4: the silent degradation here previously
+    hid a local misconfiguration for the whole V2 cycle).
     """
-    global _pool, _pool_unavailable
+    global _pool, _pool_unavailable, _pool_error
     if _pool is not None:
         return _pool
     if _pool_unavailable:
         return None
 
+    pool: Optional[ConnectionPool] = None
     try:
+        # Open explicitly rather than via open=True: when the constructor
+        # raises, the half-built pool's worker threads would otherwise be
+        # left running (psycopg_pool warns "couldn't stop thread ...").
         pool = ConnectionPool(
             conninfo=settings.pg_dsn,
             min_size=1,
             max_size=5,
-            open=True,
+            open=False,
         )
+        # Fail fast: the psycopg_pool default is 30s, which would stall
+        # /health and every request behind an unreachable database.
+        pool.open(wait=True, timeout=5)
         # Verify connectivity + ensure table exists
         with pool.connection() as conn:
             _init_ddl(conn)
         _pool = pool
+        _pool_error = None
         logger.info("PlanStore: PostgreSQL pool initialised")
         return pool
     except Exception as exc:
+        _pool_error = f"{type(exc).__name__}: {exc}"
         logger.warning("PlanStore: PostgreSQL unavailable — persistence disabled: %s", exc)
+        if pool is not None:
+            try:
+                pool.close()
+            except Exception:  # pragma: no cover - best-effort cleanup
+                pass
         _pool_unavailable = True
         return None
 
@@ -237,6 +255,35 @@ class PlanStore:
         except Exception as exc:
             logger.warning("PlanStore.delete failed: %s", exc)
             return False
+
+    # ── T0.4: Storage visibility ──────────────────────────────────
+
+    def health(self) -> dict:
+        """Report PostgreSQL connectivity for ``/health``.
+
+        Never raises. Reports the recorded reason when the pool could not be
+        created, so a misconfiguration is visible instead of showing up only
+        as persistence silently doing nothing.
+        """
+        pool = _get_pool()
+        if pool is None:
+            return {
+                "configured": bool(settings.pg_dsn),
+                "connected": False,
+                "error": _pool_error or "connection pool unavailable",
+            }
+        try:
+            with pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT 1")
+                    cur.fetchone()
+            return {"configured": True, "connected": True, "error": None}
+        except Exception as exc:
+            return {
+                "configured": True,
+                "connected": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
 
     # ── P2.3: Feedback ────────────────────────────────────────────
 
