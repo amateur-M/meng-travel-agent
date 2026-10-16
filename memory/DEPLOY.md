@@ -5,7 +5,7 @@
 ### 0. 数据库（V3 起为必需）
 
 对话记忆与行程持久化都用 PostgreSQL。首次需要建角色与库，脚本是幂等的，
-可以重复执行；它只建/重置 `coupletrip` 角色与库，**不会动其他数据库**：
+可以重复执行；**只操作 `coupletrip` 这一个角色与库，不动其他数据库**：
 
 ```bash
 # 会交互式询问 postgres 超级用户密码（密码不进 shell 历史）
@@ -13,6 +13,32 @@ psql -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql
 # Windows 上 psql 的完整路径例：
 # "D:\Software\Postgresql18\bin\psql.exe" -U postgres -h 127.0.0.1 -f backend/scripts/init_local_db.sql
 ```
+
+脚本的行为（**注意第二点**，改动过）：
+
+1. 角色/库不存在则创建，密码默认取文档里的 `coupletrip_dev`；
+   已存在则**不改动它的密码** —— 否则重跑一次就会悄悄覆盖你自定义的密码，
+   之后应用认证失败且看不出原因。
+2. 想用自定义密码，**显式传入**（密码不进脚本文件、也不进 shell 历史）：
+   ```bash
+   psql -U postgres -h 127.0.0.1 -v new_password=<你的密码> -f backend/scripts/init_local_db.sql
+   # 想把已有角色重置回文档默认值，就显式传 new_password=coupletrip_dev
+   ```
+   随后 `backend/.env` 的 `PG_DSN` 必须用同一个密码。
+3. 脚本会强制 `SET password_encryption = 'scram-sha-256'`：若角色口令的校验子是
+   MD5 而 `pg_hba.conf` 要求 scram，**即使密码正确也会认证失败**，
+   表现得和"密码错"一模一样 —— 这是个容易误诊的陷阱。
+4. 结尾会打印角色的 `verifier_prefix`（应为 `SCRAM-SHA-256`）、库的 owner 与
+   encoding，用于认证失败时定位原因。
+
+**只改 `backend/.env` 一处即可**：`PG_DSN` 是应用唯一读取密码的地方，且该文件被
+`.gitignore` 忽略（不提交）。`config/settings.py` 里的 DSN 只是"env 与 .env 都
+没给时才用"的兜底默认，`.env.example` 是给新克隆者的模板 —— 两者都应保持占位符，
+不要写入真实密码。`docker-compose.yml` 里的 `POSTGRES_PASSWORD` 是 compose
+**另一个** PostgreSQL 容器自己的密码，与本机实例无关。
+
+> ⚠️ 密码若含 `@ : / ? # & %` 等 URL 保留字符，写进 `PG_DSN` 时必须百分号编码
+> （`@`→`%40`、`#`→`%23`），否则 DSN 会被解析到错误的主机/库。
 
 验证：`curl http://localhost:8000/health` 应返回
 `storage.postgres.connected = true` 且 `storage.chat.connected = true`；
