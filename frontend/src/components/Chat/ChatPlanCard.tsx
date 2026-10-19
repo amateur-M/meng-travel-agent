@@ -26,33 +26,36 @@ export function ChatPlanCard({ plan, expanded, onToggle, onOpenFull }: ChatPlanC
   return (
     <div
       data-testid="chat-plan-card"
-      className="rounded-2xl border border-blush-200 bg-white p-4 shadow-soft"
+      className="overflow-hidden rounded-2xl border border-blush-200 bg-surface shadow-soft"
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 shrink-0 text-blush-500" />
-            <p className="truncate text-sm font-semibold text-ink-900">{plan.destination}</p>
+      <div className="bg-gradient-to-br from-brand to-brand-dark px-4 py-3 text-white">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <MapPin className="h-4 w-4 shrink-0" />
+              <p className="truncate text-sm font-semibold">{plan.destination}</p>
+            </div>
+            <div className="mt-1 flex items-center gap-1.5 text-xs text-white/85">
+              <CalendarDays className="h-3.5 w-3.5" />
+              {plan.start_date} 至 {plan.end_date}
+            </div>
           </div>
-          <div className="mt-1 flex items-center gap-1.5 text-xs text-ink-500">
-            <CalendarDays className="h-3.5 w-3.5 text-gold-400" />
-            {plan.start_date} 至 {plan.end_date}
-          </div>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-100 px-2.5 py-1 text-xs text-ink-500">
-            <Sparkles className="h-3.5 w-3.5 text-gold-400" />
-            {plan.days.length} 天
-          </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-cream-100 px-2.5 py-1 text-xs text-ink-500">
-            <WalletCards className="h-3.5 w-3.5 text-blush-400" />¥
-            {total_spent.toLocaleString("zh-CN")} / ¥{total_budget.toLocaleString("zh-CN")} · {percentage}%
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              {plan.days.length} 天
+            </span>
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2.5 py-1 text-xs text-white backdrop-blur-sm">
+              <WalletCards className="h-3.5 w-3.5" />¥
+              {total_spent.toLocaleString("zh-CN")} / ¥{total_budget.toLocaleString("zh-CN")} · {percentage}%
+            </span>
+          </div>
         </div>
       </div>
 
-      <div className="mt-3">
+      <div className="p-4">
+      <div className="mt-0">
         <BudgetBar
           totalBudget={total_budget}
           totalSpent={total_spent}
@@ -87,6 +90,7 @@ export function ChatPlanCard({ plan, expanded, onToggle, onOpenFull }: ChatPlanC
           <Timeline days={plan.days} weatherSwaps={plan.weather_swaps} planId={plan.plan_id} />
         </div>
       )}
+      </div>
     </div>
   );
 }

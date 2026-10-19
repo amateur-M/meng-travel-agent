@@ -3,12 +3,12 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   CalendarDays,
-  HeartHandshake,
   MapPin,
   Sparkles,
   WalletCards,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { AppHeader } from "../components/AppHeader";
 import { BudgetAlerts } from "../components/BudgetAlerts/BudgetAlerts";
 import { BudgetBar } from "../components/BudgetBar/BudgetBar";
 import { CoupleQuote } from "../components/CoupleQuote/CoupleQuote";
@@ -64,8 +64,9 @@ export function PlanResult() {
 
   return (
     <div className="min-h-screen bg-cream-50 text-ink-900">
-      <header className="sticky top-0 z-10 border-b border-cream-200 bg-white/90">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
+      <AppHeader
+        sticky
+        leading={
           <button
             type="button"
             className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-500 transition hover:bg-cream-100 hover:text-ink-900"
@@ -74,45 +75,40 @@ export function PlanResult() {
             <ArrowLeft className="h-4 w-4" />
             重新规划
           </button>
-
-          <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blush-500 text-white">
-              <HeartHandshake className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="text-base font-semibold">CoupleTrip</p>
-              <p className="text-xs text-ink-400">情侣旅游规划</p>
-            </div>
-          </div>
-        </div>
-      </header>
+        }
+      />
 
       <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
         <motion.section
-          className="rounded-lg border border-cream-200 bg-white p-5 shadow-soft sm:p-6"
+          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark p-6 text-white shadow-lift sm:p-8"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
         >
-          <div className="flex flex-wrap items-start justify-between gap-4">
+          {/* Decorative glow — a fixed gold accent so it reads the same in both themes. */}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-10 -top-12 h-48 w-48 rounded-full bg-gold-300/30 blur-2xl"
+          />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <MapPin className="h-5 w-5 text-blush-500" />
-                <h1 className="text-2xl font-semibold">{plan.destination}</h1>
+                <MapPin className="h-6 w-6" />
+                <h1 className="text-3xl font-semibold tracking-tight">{plan.destination}</h1>
               </div>
-              <div className="mt-2 flex items-center gap-1.5 text-sm text-ink-500">
-                <CalendarDays className="h-4 w-4 text-gold-400" />
+              <div className="mt-3 flex items-center gap-1.5 text-sm text-white/85">
+                <CalendarDays className="h-4 w-4" />
                 {plan.start_date} 至 {plan.end_date}
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <div className="flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1.5 text-xs text-ink-500">
-                <Sparkles className="h-3.5 w-3.5 text-gold-400" />
+              <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur-sm">
+                <Sparkles className="h-3.5 w-3.5" />
                 {plan.days.length} 天行程
               </div>
-              <div className="flex items-center gap-2 rounded-full bg-cream-100 px-3 py-1.5 text-xs text-ink-500">
-                <WalletCards className="h-3.5 w-3.5 text-blush-400" />
+              <div className="flex items-center gap-2 rounded-full bg-white/15 px-3 py-1.5 text-xs text-white backdrop-blur-sm">
+                <WalletCards className="h-3.5 w-3.5" />
                 ¥{plan.budget_breakdown.total_spent.toLocaleString("zh-CN")} / ¥
                 {plan.budget_breakdown.total_budget.toLocaleString("zh-CN")} ·{" "}
                 {budgetPercentage}%

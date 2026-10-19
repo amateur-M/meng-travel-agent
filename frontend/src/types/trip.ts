@@ -40,6 +40,7 @@ export interface Activity {
   description: string;
   estimated_cost: number;
   location?: string | null;
+  image_url?: string | null;
   weather_note?: string | null;
   couple_note?: string | null;
   indoor_backup?: string | null;

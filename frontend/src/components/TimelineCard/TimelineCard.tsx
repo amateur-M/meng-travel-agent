@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { Activity, ActivityType } from "../../types/trip";
 import { CoupleMessage } from "../CoupleMessage/CoupleMessage";
+import { ActivityImage } from "./ActivityImage";
 import { api } from "../../services/api";
 
 interface TimelineCardProps {
@@ -53,6 +54,9 @@ export function TimelineCard({ activity, planId }: TimelineCardProps) {
   const meta = TYPE_META[activity.activity_type] ?? TYPE_META.留白;
   const Icon = meta.Icon;
   const isRest = activity.activity_type === "留白";
+  // A real photo always shows; otherwise the themed placeholder banner is drawn
+  // for substantive activities but skipped for 留白 so rest slots stay light.
+  const showBanner = Boolean(activity.image_url) || !isRest;
   const [feedbackState, setFeedbackState] = useState<"none" | "up" | "down">("none");
 
   const handleFeedback = async (thumbs: "up" | "down") => {
@@ -74,10 +78,17 @@ export function TimelineCard({ activity, planId }: TimelineCardProps) {
       className={`relative rounded-lg p-4 shadow-soft ${
         isRest
           ? "border border-dashed border-cream-300 bg-cream-50/40"
-          : "border border-cream-200 bg-white"
+          : "border border-cream-200 bg-surface"
       }`}
       variants={timelineCardMotion}
     >
+      {showBanner && (
+        <ActivityImage
+          name={activity.name}
+          type={activity.activity_type}
+          imageUrl={activity.image_url}
+        />
+      )}
       <div className="flex gap-3">
         <div
           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${meta.className}`}

@@ -32,7 +32,7 @@ export function BudgetBar({
       : "预算内";
 
   return (
-    <div className="rounded-lg border border-cream-200 bg-white p-4 shadow-soft">
+    <div className="ct-card p-4">
       <div className="mb-3 flex items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           <WalletCards className="h-4 w-4 text-blush-400" />

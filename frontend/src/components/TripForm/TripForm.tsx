@@ -31,7 +31,7 @@ export function TripForm({ onSubmit }: TripFormProps) {
 
   return (
     <motion.form
-      className="rounded-lg border border-cream-200 bg-white p-5 shadow-soft sm:p-6"
+      className="ct-card p-5 sm:p-6"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
@@ -96,7 +96,7 @@ export function TripForm({ onSubmit }: TripFormProps) {
                   type="button"
                   className={`rounded-md px-2 py-2.5 text-sm font-medium transition ${
                     isSelected
-                      ? "bg-white text-blush-600 shadow-soft"
+                      ? "bg-surface text-blush-600 shadow-soft"
                       : "text-ink-500 hover:text-ink-900"
                   }`}
                   onClick={() => updateForm({ pace })}
@@ -111,7 +111,7 @@ export function TripForm({ onSubmit }: TripFormProps) {
 
       <button
         type="submit"
-        className="mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-blush-500 px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-blush-600"
+        className="mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white shadow-soft transition hover:bg-brand-dark"
       >
         <Send className="h-4 w-4" />
         生成行程

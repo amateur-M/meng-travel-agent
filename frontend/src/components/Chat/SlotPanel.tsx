@@ -31,7 +31,7 @@ export function SlotPanel({ slots }: SlotPanelProps) {
   const prefs = slots.preferences ?? [];
 
   return (
-    <div className="rounded-lg border border-cream-200 bg-white p-4 shadow-soft">
+    <div className="ct-card p-4">
       <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink-400">
         <Sparkles className="h-3.5 w-3.5 text-gold-400" />
         已收集信息

@@ -71,7 +71,7 @@ function TimelineDay({
 
   return (
     <motion.section
-      className="relative rounded-lg border border-cream-200 bg-white shadow-soft"
+      className="relative ct-card"
       variants={dayVariants}
     >
       <button

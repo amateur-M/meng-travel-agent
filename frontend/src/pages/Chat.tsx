@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
-import { HeartHandshake, ArrowRight, Menu, RefreshCw, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { AppHeader } from "../components/AppHeader";
 import { ChatWindow } from "../components/Chat/ChatWindow";
-import { ChatInput } from "../components/Chat/ChatInput";
+import { ChatComposer } from "../components/Chat/ChatComposer";
 import { ChatPlanCard } from "../components/Chat/ChatPlanCard";
-import { SlotPanel } from "../components/Chat/SlotPanel";
+import {
+  ChatStatusRegion,
+  type ChatStatusKind,
+} from "../components/Chat/ChatStatusRegion";
 import { SessionList } from "../components/Chat/SessionList";
 import { useChatStore, KEY_LAST } from "../stores/chatStore";
 import { useTripStore } from "../stores/tripStore";
@@ -136,14 +140,24 @@ export function Chat() {
     }
   };
 
-  const ready = status === "ready" && planRequest;
+  const ready = status === "ready" && Boolean(planRequest);
   const planning = tripStatus === "planning";
   const hasPlan = Boolean(tripPlan);
+  // The three transient states are mutually exclusive; show only the most
+  // urgent one (V4/T2.1).
+  const statusKind: ChatStatusKind =
+    tripStatus === "error"
+      ? "error"
+      : planning
+        ? "planning"
+        : pendingMessageId && !hydrating
+          ? "pending"
+          : null;
 
   return (
     <div className="flex h-screen bg-cream-50 text-ink-900">
       {/* Conversation sidebar — fixed on desktop, drawer on mobile */}
-      <aside className="hidden w-60 shrink-0 border-r border-cream-200 bg-white/70 lg:block">
+      <aside className="hidden w-60 shrink-0 border-r border-cream-200 bg-surface/70 lg:block">
         <SessionList
           sessions={sessions}
           activeId={sessionId}
@@ -158,10 +172,10 @@ export function Chat() {
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
           <div
-            className="absolute inset-0 bg-ink-900/30"
+            className="absolute inset-0 bg-black/40"
             onClick={() => setSidebarOpen(false)}
           />
-          <aside className="relative z-10 h-full w-64 border-r border-cream-200 bg-white">
+          <aside className="relative z-10 h-full w-64 border-r border-cream-200 bg-surface">
             <SessionList
               sessions={sessions}
               activeId={sessionId}
@@ -180,121 +194,65 @@ export function Chat() {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Header */}
-        <header className="shrink-0 border-b border-cream-200 bg-white/90 px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-2xl items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                aria-label="打开对话列表"
-                onClick={() => setSidebarOpen((open) => !open)}
-                className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 transition hover:bg-cream-100 lg:hidden"
-              >
-                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </button>
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blush-500 text-white">
-                <HeartHandshake className="h-5 w-5" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-base font-semibold">CoupleTrip</p>
-                <p className="line-clamp-1 text-xs text-ink-400">
-                  {sessions.find((s) => s.session_id === sessionId)?.title?.trim() ||
-                    "情侣旅行助手"}
-                </p>
-              </div>
-            </div>
-          </div>
-        </header>
+        <AppHeader
+          width="chat"
+          subtitle={
+            sessions.find((s) => s.session_id === sessionId)?.title?.trim() ||
+            "情侣旅行助手"
+          }
+          leading={
+            <button
+              type="button"
+              aria-label="打开对话列表"
+              onClick={() => setSidebarOpen((open) => !open)}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-ink-500 transition hover:bg-cream-100 lg:hidden"
+            >
+              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          }
+        />
 
-        {/* Chat messages */}
-        <div className="flex min-h-0 flex-1 flex-col">
-          <ChatWindow messages={messages} sending={status === "sending" || hydrating} />
-        </div>
-
-        {/* Recovery: a user turn that never got a reply (recovery #5) */}
-        {pendingMessageId && !hydrating && (
-          <div className="shrink-0 px-4 pt-2 sm:px-6">
-            <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-              <span>上一条消息没有收到回复（可能是断网或中断）。</span>
-              <button
-                type="button"
-                onClick={() => void regenerate()}
-                disabled={status === "sending"}
-                className="inline-flex shrink-0 items-center gap-1 font-semibold text-amber-900 hover:underline disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                重新生成
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Planning progress, in place (no navigation away from the chat) */}
-        {planning && (
-          <div className="shrink-0 px-4 pt-2 sm:px-6">
-            <div className="mx-auto flex max-w-2xl items-center gap-2.5 rounded-xl border border-blush-200 bg-blush-50 px-3 py-2 text-xs text-blush-700">
-              <span className="h-3 w-3 shrink-0 animate-spin rounded-full border-2 border-blush-300 border-t-blush-600" />
-              <span className="truncate">{tripStep || "正在为你们规划行程..."}</span>
-            </div>
-          </div>
-        )}
-
-        {tripStatus === "error" && (
-          <div className="shrink-0 px-4 pt-2 sm:px-6">
-            <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
-              <span className="truncate">行程没有生成成功：{tripError}</span>
-              <button
-                type="button"
-                onClick={() => void handleStartPlan()}
-                disabled={launching}
-                className="inline-flex shrink-0 items-center gap-1 font-semibold text-rose-900 hover:underline disabled:opacity-50"
-              >
-                <RefreshCw className="h-3.5 w-3.5" />
-                重试
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* The itinerary itself, so it can be adjusted by talking right below it */}
-        {tripPlan && !planning && (
-          <div className="shrink-0 px-4 pt-2 sm:px-6">
-            <div className="mx-auto max-w-2xl">
+        {/* Message flow — the itinerary card rides at the end of the scroll,
+            so "对话 → 行程 → 继续对话" stays one continuous thread (V4/T2.4). */}
+        <ChatWindow
+          messages={messages}
+          sending={status === "sending" || hydrating}
+          onQuickStart={handleSend}
+          footer={
+            tripPlan && !planning ? (
               <ChatPlanCard
                 plan={tripPlan}
                 expanded={planExpanded}
                 onToggle={() => setPlanExpanded((open) => !open)}
                 onOpenFull={() => navigate(`/result?plan_id=${tripPlan.plan_id}`)}
               />
-            </div>
-          </div>
-        )}
+            ) : undefined
+          }
+        />
 
-        {/* Slot panel + launch button */}
-        {(Object.values(slots).some((v) => v) || ready) && (
-          <div className="shrink-0 px-4 pb-2 sm:px-6">
-            <div className="mx-auto max-w-2xl space-y-2">
-              <SlotPanel slots={slots} />
-              {ready && (
-                <button
-                  type="button"
-                  onClick={handleStartPlan}
-                  disabled={launching || planning}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blush-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blush-600 disabled:opacity-50"
-                >
-                  {planning
-                    ? "正在规划行程..."
-                    : hasPlan
-                      ? "按新的要求重新规划"
-                      : "开始规划行程"}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Input */}
-        <ChatInput onSend={handleSend} disabled={status === "sending" || launching || planning} />
+        {/* Composer — one status bar + collected slots + primary action + input
+            collapsed into a single action area (V4/T2.2). */}
+        <ChatComposer
+          statusRegion={
+            <ChatStatusRegion
+              kind={statusKind}
+              tripError={tripError ?? ""}
+              tripStep={tripStep}
+              chatBusy={status === "sending"}
+              launching={launching}
+              onRegenerate={() => void regenerate()}
+              onRetry={() => void handleStartPlan()}
+            />
+          }
+          slots={slots}
+          ready={ready}
+          planning={planning}
+          launching={launching}
+          hasPlan={hasPlan}
+          onStartPlan={handleStartPlan}
+          onSend={handleSend}
+          inputDisabled={status === "sending" || launching || planning}
+        />
       </div>
     </div>
   );
