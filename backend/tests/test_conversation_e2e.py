@@ -37,12 +37,14 @@ def store():
 @pytest.fixture
 def client(store):
     """A client whose chat endpoints are backed by the in-memory store."""
-    with patch("main.conversation_store", store), patch(
+    with patch("api.chat.conversation_store", store), patch(
+        "api.profile.conversation_store", store
+    ), patch(
         "agents.conversation.conversation_store", store
     ), patch(
         "agents.conversation.load_episodic_recall", new=AsyncMock(return_value=EPISODIC)
     ), patch(
-        "main.load_episodic_recall", new=AsyncMock(return_value=EPISODIC)
+        "api.profile.load_episodic_recall", new=AsyncMock(return_value=EPISODIC)
     ):
         yield TestClient(app)
 
@@ -256,5 +258,5 @@ class TestLongTermMemoryOverHttp:
             "trips": [{"plan_id": "p1", "destination": "大理", "status": "completed"}],
             "feedback": [{"activity_name": "洱海骑行", "up": 1, "down": 0}],
         }
-        with patch("main.load_episodic_recall", new=AsyncMock(return_value=recall)):
+        with patch("api.profile.load_episodic_recall", new=AsyncMock(return_value=recall)):
             assert client.get("/api/chat/recall").json() == recall

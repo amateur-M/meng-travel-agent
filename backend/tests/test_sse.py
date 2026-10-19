@@ -9,7 +9,8 @@ import json
 import asyncio
 import pytest
 
-from main import _stream_graph, _emit_node_events, _sse, _phase_message
+from services.plan_pipeline import _stream_graph
+from services.sse import _emit_node_events, _sse, _phase_message
 from agents.state import AgentState
 from services.storage import generate_plan_id
 

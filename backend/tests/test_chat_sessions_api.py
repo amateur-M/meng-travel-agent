@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from main import app
 
-SESSIONS = "main.conversation_store"
+SESSIONS = "services.conversation_store.conversation_store"
 
 
 @pytest.fixture
@@ -168,7 +168,7 @@ class TestChatForwarding:
             "plan_request": None,
             "modify_patch": None,
         }
-        with patch("main.handle_chat", new=AsyncMock(return_value=reply)) as m:
+        with patch("api.chat.handle_chat", new=AsyncMock(return_value=reply)) as m:
             response = client.post(
                 "/api/chat",
                 json={
@@ -263,7 +263,7 @@ class TestRecallEndpoint:
             "trips": [{"plan_id": "p1", "destination": "大理", "status": "completed"}],
             "feedback": [{"activity_name": "洱海骑行", "up": 2, "down": 0}],
         }
-        with patch("main.load_episodic_recall", new=AsyncMock(return_value=recall)):
+        with patch("api.profile.load_episodic_recall", new=AsyncMock(return_value=recall)):
             response = client.get("/api/chat/recall")
 
         assert response.status_code == 200
@@ -271,7 +271,7 @@ class TestRecallEndpoint:
 
     def test_empty_recall_is_not_an_error(self, client):
         with patch(
-            "main.load_episodic_recall",
+            "api.profile.load_episodic_recall",
             new=AsyncMock(return_value={"trips": [], "feedback": []}),
         ):
             response = client.get("/api/chat/recall")
@@ -295,9 +295,9 @@ class TestPlanLinksToSession:
     """A finished trip is remembered on the conversation that asked for it."""
 
     def test_plan_records_last_plan_on_the_session(self, client):
-        with patch("main.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
-            "main.plan_store.save", return_value=True
-        ) as save, patch("main._run_graph_to_queue", new=AsyncMock()) as run:
+        with patch("services.conversation_store.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
+            "services.storage.plan_store.save", return_value=True
+        ) as save, patch("api.plan._run_graph_to_queue", new=AsyncMock()) as run:
             response = client.post("/api/plan", json={**PLAN_BODY, "session_id": "sess-1"})
 
         assert response.status_code == 200
@@ -309,9 +309,9 @@ class TestPlanLinksToSession:
         assert run.call_args.args[1] == plan_id
 
     def test_plan_without_session_does_not_link(self, client):
-        with patch("main.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
-            "main.plan_store.save", return_value=True
-        ), patch("main._run_graph_to_queue", new=AsyncMock()):
+        with patch("services.conversation_store.conversation_store.set_last_plan", new=AsyncMock(return_value=True)) as link, patch(
+            "services.storage.plan_store.save", return_value=True
+        ), patch("api.plan._run_graph_to_queue", new=AsyncMock()):
             response = client.post("/api/plan", json=PLAN_BODY)
 
         assert response.status_code == 200

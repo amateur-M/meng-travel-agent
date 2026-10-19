@@ -32,7 +32,7 @@ class TestDegradedFlag:
 
     @pytest.mark.asyncio
     async def test_complete_payload_has_degraded(self):
-        from main import _stream_graph
+        from services.plan_pipeline import _stream_graph
         from services.storage import generate_plan_id
 
         state = {

@@ -43,8 +43,8 @@ MAX_LAG_SECONDS = 0.15
 def _instant_health():
     """Keep /health cheap: it is the probe, not the subject."""
     return (
-        patch("main.plan_store.health", return_value=dict(HEALTHY)),
-        patch("main.conversation_store.health", new=AsyncMock(return_value=dict(HEALTHY))),
+        patch("services.storage.plan_store.health", return_value=dict(HEALTHY)),
+        patch("services.conversation_store.conversation_store.health", new=AsyncMock(return_value=dict(HEALTHY))),
     )
 
 
@@ -88,8 +88,8 @@ async def test_slow_plan_save_does_not_stall_the_loop(instant_health):
         time.sleep(SLOW_SECONDS)
         return True
 
-    with patch("main.plan_store.save", side_effect=slow_save), patch(
-        "main._run_graph_to_queue", new=AsyncMock()
+    with patch("services.storage.plan_store.save", side_effect=slow_save), patch(
+        "api.plan._run_graph_to_queue", new=AsyncMock()
     ):
         lag = await _measure_loop_lag(
             lambda client: client.post("/api/plan", json=PLAN_BODY)
@@ -109,7 +109,7 @@ async def test_slow_plan_read_does_not_stall_the_loop(instant_health):
         time.sleep(SLOW_SECONDS)
         return None
 
-    with patch("main.plan_store.get", side_effect=slow_get):
+    with patch("services.storage.plan_store.get", side_effect=slow_get):
         lag = await _measure_loop_lag(lambda client: client.get("/api/plan/whatever"))
 
     assert lag < MAX_LAG_SECONDS, (
@@ -126,7 +126,7 @@ async def test_slow_plan_list_does_not_stall_the_loop(instant_health):
         time.sleep(SLOW_SECONDS)
         return []
 
-    with patch("main.plan_store.list", side_effect=slow_list):
+    with patch("services.storage.plan_store.list", side_effect=slow_list):
         lag = await _measure_loop_lag(lambda client: client.get("/api/plan/history"))
 
     assert lag < MAX_LAG_SECONDS, (
@@ -143,7 +143,7 @@ async def test_slow_feedback_write_does_not_stall_the_loop(instant_health):
         time.sleep(SLOW_SECONDS)
         return True
 
-    with patch("main.plan_store.save_feedback", side_effect=slow_feedback):
+    with patch("services.storage.plan_store.save_feedback", side_effect=slow_feedback):
         lag = await _measure_loop_lag(
             lambda client: client.post(
                 "/api/plan/p1/feedback?activity_name=洱海骑行&thumbs=up"
