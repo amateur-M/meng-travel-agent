@@ -81,6 +81,10 @@ class Activity(BaseModel):
     description: str = Field(default="", description="活动简介")
     estimated_cost: float = Field(default=0.0, description="预估花费（元）")
     location: Optional[str] = Field(None, description="地点名/地址")
+    image_url: Optional[str] = Field(
+        None,
+        description="活动配图 URL（来自高德 POI photos 或精选图）；为空时前端用主题占位插画",
+    )
     weather_note: Optional[str] = Field(None, description="天气提示")
     couple_note: Optional[str] = Field(None, description="情侣寄语")
     indoor_backup: Optional[str] = Field(None, description="室内备选方案")

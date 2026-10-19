@@ -1,4 +1,4 @@
-﻿"""output_format — Final formatting node that packages the draft into final_itinerary.
+"""output_format — Final formatting node that packages the draft into final_itinerary.
 
 Converts the internal draft dict into the shape expected by TripPlanResponse
 and performs a final validation pass.
@@ -11,13 +11,30 @@ from typing import Dict, Any
 from agents.state import AgentState
 
 
-def _normalise_days(params: dict, draft: dict, weather: dict) -> list:
+def _image_lookup(pois: list) -> dict:
+    """Map POI name -> image_url so activities can be enriched after the fact.
+
+    The itinerary activities are produced by the LLM (or the mock builder) from
+    POI *names*, so they never carry the photo the POI search found. This lets
+    output_format re-attach ``image_url`` by name (V4/T3.1).
+    """
+    lookup: dict = {}
+    for poi in pois or []:
+        name = poi.get("name")
+        url = poi.get("image_url")
+        if name and url:
+            lookup[name] = url
+    return lookup
+
+
+def _normalise_days(params: dict, draft: dict, weather: dict, pois: list | None = None) -> list:
     """Fill day metadata and recompute daily totals before returning JSON."""
     try:
         start = date.fromisoformat(str(params.get("start_date", "")))
     except (ValueError, TypeError):
         start = date.today()
 
+    images = _image_lookup(pois or [])
     weather_keys = list(weather.keys())
     normalised = []
 
@@ -44,6 +61,14 @@ def _normalise_days(params: dict, draft: dict, weather: dict) -> list:
             float(activity.get("estimated_cost", 0))
             for activity in day.get("activities", [])
         )
+
+        # Attach the POI photo to matching activities when they lack one.
+        for activity in day_out.get("activities", []):
+            if not activity.get("image_url"):
+                url = images.get(activity.get("name"))
+                if url:
+                    activity["image_url"] = url
+
         normalised.append(day_out)
 
     return normalised
@@ -65,7 +90,7 @@ async def output_format(state: AgentState) -> Dict[str, Any]:
     notes = state.get("couple_notes", [])
     weather_swaps = state.get("weather_swaps", [])
     rhythm_adjustments = state.get("rhythm_adjustments", [])
-    days = _normalise_days(params, draft, state.get("weather_data", {}))
+    days = _normalise_days(params, draft, state.get("weather_data", {}), state.get("poi_list", []))
 
     if not budget:
         total_spent = sum(float(day["daily_cost"]) for day in days)

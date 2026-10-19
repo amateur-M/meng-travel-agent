@@ -75,6 +75,7 @@ async def search_poi(state: AgentState) -> Dict[str, Any]:
             "couple_score": item.get("rating", 0) * 2,  # simple mapping for curated
             "duration_min": item.get("duration_min", 120),
             "description": item.get("description", ""),
+            "image_url": item.get("image_url"),
             "source": "curated",
         })
 
@@ -90,10 +91,13 @@ async def search_poi(state: AgentState) -> Dict[str, Any]:
         warnings.append(f"景点搜索失败，已降级处理: {exc}")
         logger.warning("POI search failed for %s: %s", destination, exc, exc_info=True)
 
-    # Mark Amap items as non-curated
+    # Mark Amap items as non-curated and lift the first photo into image_url
     for p in amap_pois:
         if "source" not in p:
             p["source"] = "amap"
+        if not p.get("image_url"):
+            photos = p.get("photos") or []
+            p["image_url"] = photos[0] if photos else None
 
     # Merge: curated first (dedup by name), then Amap
     curated_names = {p["name"] for p in curated_pois}
