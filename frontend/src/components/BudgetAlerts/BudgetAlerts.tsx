@@ -84,7 +84,7 @@ export function BudgetAlerts({ budgetBreakdown }: BudgetAlertsProps) {
                 {downgradeNotes.filter(Boolean).slice(0, 4).map((note) => (
                   <li
                     key={note}
-                    className="rounded-lg bg-white/70 px-3 py-2 text-xs leading-5 text-ink-600"
+                    className="rounded-lg bg-surface/70 px-3 py-2 text-xs leading-5 text-ink-600"
                   >
                     {note}
                   </li>

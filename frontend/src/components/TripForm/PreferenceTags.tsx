@@ -37,7 +37,7 @@ export function PreferenceTags({
               className={`inline-flex items-center gap-1 rounded-full border px-3 py-2 text-sm font-medium transition ${
                 isSelected
                   ? "border-blush-300 bg-blush-50 text-blush-600"
-                  : "border-cream-200 bg-white text-ink-500 hover:border-blush-200 hover:text-ink-700"
+                  : "border-cream-200 bg-surface text-ink-500 hover:border-blush-200 hover:text-ink-700"
               }`}
               onClick={() => toggle(option)}
             >

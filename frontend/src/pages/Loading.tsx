@@ -20,7 +20,7 @@ function TravelIllustration() {
   return (
     <div className="relative mx-auto h-36 w-36">
       <motion.div
-        className="absolute inset-0 rounded-full border border-blush-200 bg-white shadow-soft"
+        className="absolute inset-0 rounded-full border border-blush-200 bg-surface shadow-soft"
         animate={{ scale: [1, 1.03, 1] }}
         transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -28,16 +28,16 @@ function TravelIllustration() {
         <HeartHandshake className="h-12 w-12" />
       </div>
 
-      <div className="absolute -left-4 top-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-white text-sky-600 shadow-soft">
+      <div className="absolute -left-4 top-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-surface text-sky-600 shadow-soft">
         <Plane className="h-5 w-5" />
       </div>
-      <div className="absolute -right-4 top-8 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-white text-gold-500 shadow-soft">
+      <div className="absolute -right-4 top-8 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-surface text-gold-500 shadow-soft">
         <MapPinned className="h-5 w-5" />
       </div>
-      <div className="absolute bottom-0 -left-2 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-white text-ink-400 shadow-soft">
+      <div className="absolute bottom-0 -left-2 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-surface text-ink-400 shadow-soft">
         <Compass className="h-5 w-5" />
       </div>
-      <div className="absolute -bottom-2 right-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-white text-amber-500 shadow-soft">
+      <div className="absolute -bottom-2 right-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-surface text-amber-500 shadow-soft">
         <CloudSun className="h-5 w-5" />
       </div>
     </div>
@@ -116,7 +116,7 @@ export function Loading() {
           <div className="mt-6 grid w-full gap-2">
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-blush-500 px-4 text-sm font-semibold text-white transition hover:bg-blush-600"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark"
               onClick={() => void beginPlanning()}
             >
               <RotateCcw className="h-4 w-4" />
@@ -124,7 +124,7 @@ export function Loading() {
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-cream-200 bg-white px-4 text-sm font-medium text-ink-500 transition hover:text-ink-900"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-cream-200 bg-surface px-4 text-sm font-medium text-ink-500 transition hover:text-ink-900"
               onClick={() => {
                 resetPlan();
                 navigate("/");

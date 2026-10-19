@@ -42,10 +42,10 @@ export function SSEProgress({ steps }: SSEProgressProps) {
             key={step.id}
             className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
               isActive
-                ? "border-blush-200 bg-white shadow-soft"
+                ? "border-blush-200 bg-surface shadow-soft"
                 : isDone
-                  ? "border-cream-200 bg-white/70"
-                  : "border-cream-200 bg-white/40"
+                  ? "border-cream-200 bg-surface/70"
+                  : "border-cream-200 bg-surface/40"
             }`}
             variants={itemVariants}
           >

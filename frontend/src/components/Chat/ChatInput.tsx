@@ -26,26 +26,24 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
   };
 
   return (
-    <div className="border-t border-cream-200 bg-white px-4 py-3 sm:px-6">
-      <div className="mx-auto flex max-w-2xl items-end gap-2">
-        <textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="说说你们的旅行想法..."
-          rows={1}
-          className="flex-1 resize-none rounded-xl border border-cream-200 bg-cream-50 px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-300 focus:border-blush-400 focus:outline-none focus:ring-1 focus:ring-blush-400"
-          style={{ maxHeight: "120px" }}
-        />
-        <button
-          type="button"
-          onClick={handleSend}
-          disabled={disabled || !text.trim()}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blush-500 text-white transition hover:bg-blush-600 disabled:cursor-not-allowed disabled:opacity-40"
-        >
-          <Send className="h-4 w-4" />
-        </button>
-      </div>
+    <div className="flex items-end gap-2">
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder="说说你们的旅行想法..."
+        rows={1}
+        className="flex-1 resize-none rounded-xl border border-cream-200 bg-cream-50 px-4 py-2.5 text-sm text-ink-900 placeholder:text-ink-300 focus:border-blush-400 focus:outline-none focus:ring-1 focus:ring-blush-400"
+        style={{ maxHeight: "120px" }}
+      />
+      <button
+        type="button"
+        onClick={handleSend}
+        disabled={disabled || !text.trim()}
+        className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Send className="h-4 w-4" />
+      </button>
     </div>
   );
 }

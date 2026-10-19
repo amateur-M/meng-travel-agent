@@ -91,7 +91,7 @@ export function SessionList({
                       if (event.key === "Enter") commitEditing(session.session_id);
                       if (event.key === "Escape") setEditingId(null);
                     }}
-                    className="min-w-0 flex-1 rounded border border-cream-200 bg-white px-2 py-1 text-xs focus:border-blush-400 focus:outline-none"
+                    className="min-w-0 flex-1 rounded border border-cream-200 bg-surface px-2 py-1 text-xs focus:border-blush-400 focus:outline-none"
                   />
                   <button
                     type="button"

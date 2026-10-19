@@ -55,7 +55,7 @@ function StreamingDayCard({ day }: { day: StreamingDay }) {
 
   return (
     <motion.section
-      className="rounded-lg border border-cream-200 bg-white/80 p-3 shadow-soft"
+      className="rounded-lg border border-cream-200 bg-surface/80 p-3 shadow-soft"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0 }}

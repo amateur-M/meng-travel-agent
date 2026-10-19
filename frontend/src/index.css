@@ -2,22 +2,100 @@
 @tailwind components;
 @tailwind utilities;
 
+/* V4/T3.5: a few semantic classes for the patterns that were copy-pasted
+   across a dozen components, so "card", "text input" and "primary button"
+   mean one thing each. Padding/size stay at the call site as utilities
+   (which still override, since @layer components sits below utilities). */
+@layer components {
+  .ct-card {
+    @apply rounded-lg border border-cream-200 bg-surface shadow-soft;
+  }
+  .ct-input {
+    @apply rounded-lg border border-cream-200 bg-surface text-ink-900 outline-none transition focus:border-blush-400 focus:ring-2 focus:ring-blush-100;
+  }
+  .ct-btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50;
+  }
+}
+
+/* V4/T2.5: the whole palette is expressed as space-separated RGB triplets so
+   Tailwind can apply an alpha (bg-surface/70). Light values match the original
+   hexes exactly; the dark block re-assigns the same names. Surfaces/borders and
+   text flip; the accent ramp inverts (dark text in light mode -> light text in
+   dark mode) so it stays readable on the flipped tints. Solid CTAs use the
+   fixed `brand` color in tailwind.config.ts and are deliberately not here. */
 :root {
   color-scheme: light;
-  --page-bg: #fffaf4;
-  --surface: #ffffff;
-  --text: #30252a;
-  --muted: #79666c;
-  --line: #f2d4b7;
+
+  /* surfaces & lines */
+  --surface: 255 255 255;
+  --cream-50: 255 250 244;
+  --cream-100: 255 245 233;
+  --cream-200: 249 232 213;
+  --cream-300: 242 212 183;
+
+  /* text */
+  --ink-300: 184 165 171;
+  --ink-400: 154 133 139;
+  --ink-500: 121 102 108;
+  --ink-600: 104 87 94;
+  --ink-700: 87 71 77;
+  --ink-800: 65 52 57;
+  --ink-900: 48 37 42;
+
+  /* accent: blush */
+  --blush-50: 255 245 247;
+  --blush-100: 255 227 234;
+  --blush-200: 249 194 209;
+  --blush-300: 243 153 178;
+  --blush-400: 231 108 141;
+  --blush-500: 204 69 109;
+  --blush-600: 169 50 85;
+  --blush-700: 131 40 65;
+
+  /* accent: gold */
+  --gold-50: 253 248 236;
+  --gold-100: 250 240 215;
+  --gold-200: 239 215 158;
+  --gold-300: 221 184 102;
+  --gold-400: 199 148 60;
+  --gold-500: 169 116 45;
+  --gold-600: 130 85 34;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --page-bg: #241c20;
-  --surface: #33272c;
-  --text: #fff5f7;
-  --muted: #c9aeb7;
-  --line: #5a444b;
+
+  --surface: 45 35 40;
+  --cream-50: 36 28 32;
+  --cream-100: 54 42 47;
+  --cream-200: 74 58 64;
+  --cream-300: 92 71 78;
+
+  --ink-300: 140 118 126;
+  --ink-400: 168 143 152;
+  --ink-500: 201 174 183;
+  --ink-600: 220 196 204;
+  --ink-700: 236 217 224;
+  --ink-800: 245 231 236;
+  --ink-900: 255 245 247;
+
+  --blush-50: 58 37 48;
+  --blush-100: 74 43 57;
+  --blush-200: 109 59 80;
+  --blush-300: 181 86 122;
+  --blush-400: 224 121 154;
+  --blush-500: 239 147 176;
+  --blush-600: 245 174 196;
+  --blush-700: 249 203 217;
+
+  --gold-50: 51 41 26;
+  --gold-100: 64 51 31;
+  --gold-200: 107 85 38;
+  --gold-300: 169 129 58;
+  --gold-400: 211 165 89;
+  --gold-500: 224 187 119;
+  --gold-600: 236 210 163;
 }
 
 * {
@@ -26,15 +104,15 @@
 
 html {
   min-height: 100%;
-  background: var(--page-bg);
+  background: rgb(var(--cream-50));
 }
 
 body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background: var(--page-bg);
-  color: var(--text);
+  background: rgb(var(--cream-50));
+  color: rgb(var(--ink-900));
   font-family:
     "Avenir Next",
     "PingFang SC",
