@@ -15,6 +15,7 @@
 | V2-P2 | Done | 2026-10-14 | 2026-10-14 | 内容质量：couple_score 重写 + curated POI + 反馈闭环 |
 | V2-P3 | Done | 2026-10-15 | 2026-10-15 | 工程化：鉴权限流 + 可观测性 + 配置规范化 + 外部 API 韧性 |
 | V3 | Done | 2026-10-16 | 2026-10-16 | 对话记忆 L0–L3 + 会话持久化与恢复（T0.2 本地库初始化待执行） |
+| V4 | Done | 2026-10-17 | 2026-10-17 | 系统成熟度：后端分层（api/+services/）+ Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步 |
 
 ## M0 Completion Checklist
 
@@ -465,3 +466,42 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 | `AsyncConnectionPool` 全程异步 | 同步池 + `asyncio.to_thread` | psycopg 异步模式在 Windows 默认 `ProactorEventLoop` 上直接 `InterfaceError`；P0.2 的约束是"不阻塞事件循环"，线程卸载等价且跨平台 |
 | T0.3 移除 Redis 放在 P0 | 并入 P1 | 先删 Redis 会让中间态没有会话存储；等 PG 接过再删，每个提交都是绿的 |
 | "最近 10 轮" | `HISTORY_MESSAGES = 20`（条数） | `get_recent_messages` 单位是消息条数，一轮 = 2 条，初版实际只给了 5 轮 |
+
+## V4 系统成熟度重构（2026-10-17）
+
+> 起因：用户反馈"前端丑、后端定位不清晰、不符合一个系统的标准"。方案见
+> `UPGRADE_V4_SYSTEM_MATURITY.md`。定位决策：对话式为唯一主入口。分 P0–P4 落地。
+
+### P1 后端分层重构（纯结构，零行为变化）
+- [x] `main.py` 从 673 行巨石收敛为 112 行 `create_app()`：只做日志/Instrumentator/limiter/CORS/include_router/lifespan 装配
+- [x] 新建 `services/sse.py`（`_sse`/`_phase_message`/`_emit_node_events`）与 `services/plan_pipeline.py`（`plan_streams` 总线 + `iter_graph_events` 共享核心 + `run_graph_to_queue`/`_stream_graph`）
+- [x] **消除重复**：`_stream_graph`（yield）与 `run_graph_to_queue`（put queue）都基于同一 `iter_graph_events(initial_state, plan_id)` 异步生成器
+- [x] 新建 `api/` 四个 `APIRouter`：`health` / `chat` / `profile` / `plan`，另加 `errors.py`（统一异常）+ `rate_limit.py`（limiter 单例）；路径/契约/response_model 完全不变
+- [x] 测试 patch 目标随迁移更新（instance-attr / whole-object rebind / function patch 三类拓扑）
+- [x] **回归：461 passed + 3 skipped**（基线套件已自方案文档的 422+1 增长）
+
+### P0 产品定位收口
+- [x] 抽出 `components/AppHeader.tsx` 统一页头（Home/Chat/PlanResult 共用），消除视觉分叉
+- [x] 新增 `config/layout.ts` 的 `CONTENT_WIDTH`（chat=max-w-2xl / page=max-w-6xl）宽度令牌
+- [x] `/form` 从主导航移除（此前已不在任何导航），保留路由作隐藏批量录入入口；App.tsx / e2e 加意图注释
+
+### P2 前端信息架构重排 + 深色模式修复
+- [x] `ChatStatusRegion.tsx`：把"重新生成/正在规划/出错"三条互斥横幅合并为**单一状态条**（优先级 error > planning > pending）
+- [x] `ChatComposer.tsx`：状态条 + 槽位面板 + 开始规划按钮 + 输入框合为一体化行动区
+- [x] `Chat.tsx` 收敛为三段：header / 消息流（行程卡作 `footer` 随滚动流）/ composer；条件块从 7-8 个降到 3 段
+- [x] **深色模式接线**：`tailwind.config.ts` 颜色改为 `rgb(var(--x) / <alpha-value>)`，`index.css` 为 light/dark 两套 RGB 三元组赋值；`bg-white`→`bg-surface`
+- [x] 实心 CTA 分离到**固定 `brand` 色**（`bg-blush-500`→`bg-brand`、`bg-blush-600`→`bg-brand-dark`），避免翻转破坏白字对比度；侧边栏遮罩 `bg-ink-900/30`→`bg-black/40`
+- [x] 新增 `ThemeToggle.tsx` 挂在 `AppHeader`（此前 theme 已接线却无 UI 入口 = 假开关）
+- [x] **验收：`tsc -b && vite build` 通过；`check:store` 49/49 + 28/28**
+
+### P3 视觉升级
+- [x] 后端 `Activity` schema 加 `image_url`；`search_poi` 从 curated/高德 `photos[0]` 提取；`output_format` 按 name 回填到活动（LLM 路径无法自行产出图 URL）
+- [x] 前端 `types/trip.ts` `Activity` 加 `image_url?`；新增 `ActivityImage.tsx`：有图渲染 `<img>`（onError 回退），无图按活动类型渲染渐变主题占位插画；`TimelineCard` 接入（留白无图保持轻量）
+- [x] 氛围层：新增 `ChatEmptyState.tsx`（渐变插画 + 引导文案 + 快速开始建议 chip）；`PlanResult` 头部升级为目的地 hero 头图（brand 渐变 + 半透明 chip）；`ChatPlanCard` 加同款渐变头部条
+- [x] 令牌收敛：`index.css` `@layer components` 定义 `.ct-card`/`.ct-input`/`.ct-btn-primary`，迁移 BudgetBar/SlotPanel/Timeline/TripForm/Home/DateRangePicker/DestinationSelect/ChatComposer 的重复字面量
+- [x] **T3.3 静态地图评估后跳过**：需高德 key + 联网瓦片，离线不可行；POI 配图已提供视觉主体
+
+### P4 文档同步
+- [x] `ARCHITECTURE.md` §5 目录改为真实结构（去 `app/`、加 `api/`+`services/`）；§4 数据流图节点名对齐实际 + 入口改 Chat；§2.1 State 改 `AgentState`；§6.2 补 V4 决策
+- [x] `ARCHITECTURE.md` §3.1 API 表已含全部端点（profile/recall/feedback/sessions），核对无需补
+- [x] 新增本文件 V4 章节 + `UPGRADE_V4_SYSTEM_MATURITY.md`；BOOTSTRAP/GOALS 追加 V4 摘要

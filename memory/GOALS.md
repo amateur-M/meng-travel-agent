@@ -1,9 +1,48 @@
 ## Current Iteration Goals
 
-**Current Milestone**: V3 对话记忆与持久化（Complete，仅剩本地库初始化待执行）
+**Current Milestone**: V4 系统成熟度重构（Complete）
 
-**Objective**: 让 CoupleTrip 首先是一个**能正常对话**的 Agent —— 多轮记忆、真回答，
-并把对话与状态**真实持久化**（刷新 / 关页 / 中断 / 多标签 / 跨天都不丢或能明确恢复）。
+**Objective**: 让 CoupleTrip 看起来与内部都**像一个成熟系统** —— 产品定位收口（对话式
+为唯一主入口）、后端分层（api/ + services/）、前端信息架构重排与深色模式修复、视觉升级。
+
+### V4 Completion Summary (2026-10-17)
+
+设计与执行结果见 `UPGRADE_V4_SYSTEM_MATURITY.md`。起因：用户反馈"前端丑、后端定位
+不清晰、不符合一个系统的标准"。定位决策：**对话式为唯一主入口**。
+
+**P1 后端分层（纯结构重构）**
+- `main.py` 673 行巨石 → 112 行 `create_app()`；新增 `api/`（health/chat/profile/plan + errors + rate_limit）
+  与 `services/sse.py` + `services/plan_pipeline.py`
+- 抽出共享 `iter_graph_events`，`_stream_graph`（yield）与 `run_graph_to_queue`（put）不再重复
+- 端点路径/契约/response_model 完全不变；测试 patch 目标随迁移更新
+
+**P0 产品定位收口**
+- Chat(`/`) 为唯一主入口；`/form` 降级为隐藏批量录入；`/result` 作全屏详情（仅从 `ChatPlanCard` 进）
+- 抽出统一 `AppHeader`；`config/layout.ts` 的 `CONTENT_WIDTH` 宽度令牌
+
+**P2 前端 IA 重排 + 深色模式修复**
+- `ChatStatusRegion`：三条互斥横幅合并为单一状态条（error > planning > pending）；`ChatComposer` 一体化行动区；Chat 收敛为三段
+- 深色模式真接线：颜色→`rgb(var(--x) / <alpha-value>)`，`index.css` light/dark 两套变量；实心 CTA 用固定 `brand` 色；新增 `ThemeToggle`（此前无 UI 入口 = 假开关）
+
+**P3 视觉升级**
+- `Activity.image_url`（高德 photos / curated）+ `output_format` 按 name 回填；前端 `ActivityImage` 配图/主题占位插画
+- `ChatEmptyState` 渐变插画 + 快速开始建议；`PlanResult` 目的地 hero 头图；`ChatPlanCard` 同款渐变头部条
+- `.ct-card`/`.ct-input`/`.ct-btn-primary` 语义类收敛重复字面量；静态地图（T3.3）离线不可行已评估跳过
+
+**P4 文档同步**
+- `ARCHITECTURE.md` §2.1 State → `AgentState`；§4 数据流图节点名对齐 + 入口改 Chat；§5 目录→真实结构（去 `app/`）；§6.2 补 V4 决策
+
+### V4 Verification
+
+- 后端 `pytest -q`：**461 passed + 3 skipped**（基线套件已自 V3 的 422+1 增长）
+- 前端：`npm run build`（tsc -b && vite build）通过；`npm run check:store` **49/49 + 28/28**
+- 新增 `image_url` 字段不破坏既有测试；无图时前端走主题占位，无断图
+
+### V4 Known Gaps
+
+1. **curated POI 配图未填真实 URL**：`curated_pois.json` 的 `image_url` 管路已就绪，但离线不臆造失效外链；接入图床/真实资源后直接补字段即可
+2. **静态地图（T3.3）未做**：需高德 key + 联网瓦片，另立计划
+3. **多 worker SSE fan-out 仍未支持**：`plan_streams` 是进程内存（与 V3 同一遗留）
 
 ### V3 Completion Summary (2026-10-16)
 
@@ -80,6 +119,7 @@
 | V2-P2 — Content quality (couple_score + curated + feedback) | ✅ Done |
 | V2-P3 — Production (auth / rate limit / observability / resilience) | ✅ Done |
 | V3 — Conversation memory (L0–L3) + persistence & recovery | ✅ Done（T0.2 待执行） |
+| V4 — System maturity (backend layering + Chat-only entry + dark mode + visual) | ✅ Done |
 
 ### Next Steps
 

@@ -28,37 +28,39 @@
 
 ## 2. LangGraph Agent 设计
 
-### 2.1 State 定义（TripPlanState）
+### 2.1 State 定义（AgentState）
+
+> V4/T4.1：真实实现是 `backend/agents/state.py::AgentState`（`TypedDict, total=False`），
+> 不是早期规划稿里的 `TripPlanState`/`app.models.trip`。字段以 `dict` 中间态为主，
+> 节点各取所需、返回 partial 由 LangGraph 合并。下面为实际字段概览：
 
 ```python
+import operator
 from typing import TypedDict, Annotated, List
 from langgraph.graph.message import add_messages
-from app.models.trip import TripPlan, DayPlan, Activity, BudgetSummary
 
-class TripPlanState(TypedDict):
-    # ── 用户输入 ──
-    origin: str                    # 出发地
-    destination: str               # 目的地
-    start_date: str                # 开始日期 (YYYY-MM-DD)
-    end_date: str                  # 结束日期 (YYYY-MM-DD)
-    budget: float                  # 总预算（元）
-    preferences: List[str]         # 偏好标签：["浪漫", "美食", "户外", "文化"]
-    pace: str                      # 节奏偏好："轻松" | "适中" | "充实"
-
-    # ── 外部数据（中间结果） ──
-    weather_data: dict             # { date: { condition, temp_high, temp_low, ... } }
-    poi_attractions: List[dict]    # 景点列表
-    poi_restaurants: List[dict]    # 餐厅列表
-    poi_indoor: List[dict]         # 室内备选（雨天使用）
+class AgentState(TypedDict, total=False):
+    # ── 用户输入 / 中间态 ──
+    user_input: dict              # 原始请求
+    parsed_params: dict           # 规范化后的参数（parse_input 产出）
+    weather_data: dict            # { "YYYY-MM-DD": { condition, high, low } }
+    poi_list: List[dict]          # 景点候选（含 image_url）
+    food_list: List[dict]         # 餐厅候选
 
     # ── Agent 产出 ──
-    itinerary: TripPlan            # 最终行程
-    budget_summary: BudgetSummary  # 预算摘要
-    messages: Annotated[list, add_messages]  # LLM 对话历史
+    draft_itinerary: dict         # LLM 初稿（预算/天气调整前）
+    final_itinerary: dict         # 归一化后、可序列化为 TripPlanResponse
+    budget_breakdown: dict
+    downgrade_suggestions: list
+    weather_swaps: list
+    rhythm_adjustments: list      # M5 节奏控制记录
+    couple_notes: List[str]
+    messages: Annotated[list, add_messages]
 
     # ── 流程控制 ──
-    current_step: str              # 当前步骤标识
-    errors: List[str]              # 异常收集
+    current_phase: Annotated[str, _latest_str]   # SSE 阶段标签（并行不冲突）
+    error: Annotated[str, _latest_str]           # 非空即终止性问题
+    warnings: Annotated[List[str], operator.add]  # 软失败累积（随 complete 事件回前端）
 ```
 
 ### 2.2 Node 列表
@@ -301,23 +303,28 @@ eventSource.addEventListener('complete', () => {
 
 ## 4. 数据流图
 
+> V4/T4.1：图中 LangGraph 节点名对齐实际代码（见 §2.2 注）。入口以 **Chat(`/`)
+> 对话**为主：用户在对话里说清目的地/日期/预算，`chatStore` 收集槽位后调
+> `POST /api/plan`（带 `session_id`），行程通过 SSE 回流并**直接落在对话内**
+> （`ChatPlanCard`），"查看完整行程"才进 `/result` 全屏详情。`/form`（`TripForm`）
+> 保留为批量录入的隐藏入口，走同一条 `POST /api/plan` 契约。
+
 ```
 用户浏览器
   │
-  │  (1) 填写表单：目的地、日期、预算、偏好
+  │  (1) 对话说清：目的地、日期、预算、偏好（或 /form 批量录入）
   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  TripForm 组件                                                    │
-│  - 表单校验                                                        │
-│  - POST /api/plan                                                │
+│  Chat 页（chatStore 收集槽位 → planRequest）                       │
+│  - POST /api/plan（带 session_id）                                │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              │  (2) plan_id 返回
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  FastAPI Router                                                  │
-│  - 创建 TripPlanState                                             │
-│  - 投递到 LangGraph Agent                                         │
+│  FastAPI api/plan.py                                             │
+│  - 创建初始 state，交给 services/plan_pipeline                     │
+│  - plan_streams 总线 + run_graph_to_queue                         │
 │  - 返回 plan_id + stream_url                                     │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
@@ -326,75 +333,91 @@ eventSource.addEventListener('complete', () => {
 ┌──────────────────────────────────────────────────────────────────┐
 │  LangGraph Agent                                                 │
 │                                                                  │
-│  gather_input ──→ fetch_weather ──→ generate_itinerary           │
-│               ──→ search_pois   ──→ apply_budget                 │
-│                                   ──→ weather_adapt              │
-│                                   ──→ add_couple_messages        │
-│                                   ──→ finalize_plan              │
+│  parse_input ──→ fetch_weather ─┐                                │
+│              ──→ search_poi    ─┼─（三路并行）                    │
+│              ──→ search_food   ─┘                                │
+│        ──→ plan_itinerary ──→ rhythm_control ──→ budget_check    │
+│        ──→ adapt_weather ──→ add_couple_touch ──→ output_format  │
 │                                                                  │
-│  每个 Node 执行时推送 SSE event                                   │
+│  每个 Node 执行时经 services/sse.py 推送 SSE event                │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              │  (4) SSE 事件流
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  前端 SSE Consumer (useStream hook)                              │
+│  前端 SSE Consumer（tripStore）                                   │
 │  - step → 更新进度条                                              │
 │  - partial → 追加行程卡片                                         │
 │  - budget_alert → 弹出预算预警                                    │
 │  - weather_swap → 标注天气切换                                    │
 │  - message → 渲染情侣寄语                                         │
-│  - complete → 关闭 EventSource，标记完成                          │
+│  - complete → 关闭流，标记完成                                    │
 └────────────────────────────┬─────────────────────────────────────┘
                              │
                              │  (5) 最终渲染
                              ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│  ItineraryCard 组件                                               │
-│  - 时间轴布局（上午 / 下午 / 晚间）                                   │
-│  - 每个活动：名称、描述、花费、天气图标、情侣寄语                        │
-│  - BudgetBar：已消费 / 总预算 进度条                                │
+│  ChatPlanCard（对话内）/ PlanResult（全屏详情）                    │
+│  - Timeline 时间轴（上午 / 下午 / 晚间）                           │
+│  - 每个活动：配图或主题占位、名称、描述、花费、天气、寄语           │
+│  - BudgetBar：已消费 / 总预算 进度条                              │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 5. 目录结构（规划）
+## 5. 目录结构（实际）
+
+> V4/T4.1：本节改为**真实结构**。历史上曾规划 `backend/app/` 包，但从未落地——
+> 后端一直以 `backend/` 为导入根（`from api import ...`、`from services import ...`）。
+> V4/P1 把 673 行的 `main.py` 巨石拆成 `api/`（路由，只做传输）+ `services/`
+> （SSE 格式化、行程流管线、存储/外部 API），`main.py` 收敛为 `create_app()` 装配。
 
 ```
 meng-travel-agent/
-├── memory/
-│   ├── BOOTSTRAP.md          # 项目总览（恢复上下文用）
-│   ├── ROADMAP.md            # 实现路线图
-│   ├── ARCHITECTURE.md       # 本文件
-│   └── DEPLOY.md             # 部署文档（M7）
+├── memory/                     # 项目记忆（本文件、BOOTSTRAP、PROGRESS、各 UPGRADE_*）
 ├── frontend/
 │   ├── src/
-│   │   ├── components/       # UI 组件
-│   │   ├── pages/            # 页面
-│   │   ├── hooks/            # 自定义 hooks
-│   │   ├── api/              # API 请求封装
-│   │   ├── types/            # TypeScript 类型定义
-│   │   └── utils/            # 工具函数
-│   ├── package.json
-│   ├── tsconfig.json
-│   ├── tailwind.config.ts
+│   │   ├── components/         # UI 组件（Chat/*、TripForm/*、TimelineCard/* 等）
+│   │   ├── pages/              # Chat(/) · Home(/form) · Loading · PlanResult(/result)
+│   │   ├── stores/             # Zustand：chatStore / tripStore / uiStore
+│   │   ├── services/           # API 与 SSE 消费封装
+│   │   ├── config/             # layout.ts（CONTENT_WIDTH 宽度令牌）
+│   │   ├── types/              # TypeScript 类型（trip.ts / chat.ts）
+│   │   └── index.css           # 主题变量（light/dark）+ @layer components 语义类
+│   ├── e2e/                    # Playwright 用例（本机无浏览器，纳入 CI）
+│   ├── tailwind.config.ts      # 颜色经 CSS 变量解析，另有固定 brand 色
 │   └── vite.config.ts
-├── backend/
-│   ├── app/
-│   │   ├── main.py           # FastAPI 入口
-│   │   ├── config.py         # 配置管理
-│   │   ├── api/              # REST + SSE 路由
-│   │   ├── agent/            # LangGraph Agent
-│   │   │   ├── graph.py
-│   │   │   ├── state.py
-│   │   │   ├── nodes/
-│   │   │   └── prompts/
-│   │   ├── models/           # Pydantic 数据模型
-│   │   └── services/         # 外部 API 封装
+├── backend/                    # 导入根（无 app/ 包）
+│   ├── main.py                 # create_app()：日志/Instrumentator/limiter/CORS/include_router/lifespan
+│   ├── deps.py                 # 依赖注入
+│   ├── logging_config.py       # configure_logging（structlog / JSON 可选）
+│   ├── config/settings.py      # pydantic-settings 配置
+│   ├── api/                    # 路由层（APIRouter，只做传输）
+│   │   ├── health.py           # GET /health
+│   │   ├── chat.py             # POST /api/chat + sessions CRUD
+│   │   ├── profile.py          # /api/profile + /api/chat/recall
+│   │   ├── plan.py             # POST /api/plan + stream/history/get/delete/feedback
+│   │   ├── errors.py           # 统一异常处理（RateLimitExceeded 等）
+│   │   └── rate_limit.py       # slowapi limiter 单例
+│   ├── services/               # 服务层
+│   │   ├── sse.py              # _sse / _phase_message / _emit_node_events
+│   │   ├── plan_pipeline.py    # plan_streams 总线 + iter_graph_events + run/stream
+│   │   ├── storage.py          # PlanStore（同步 psycopg + asyncio.to_thread）
+│   │   ├── conversation_store.py  # 会话/消息/画像/反馈存储
+│   │   ├── llm.py · amap.py · resilience.py · qweather_auth.py
+│   ├── agents/                 # LangGraph
+│   │   ├── graph.py · state.py · conversation.py · memory.py
+│   │   └── nodes/              # parse_input/fetch_weather/search_poi/search_food/
+│   │                           # plan_itinerary/rhythm_control/budget_check/
+│   │                           # adapt_weather/add_couple_touch/output_format
+│   ├── schemas/                # Pydantic 模型（__init__.py 行程模型 + chat.py）
+│   ├── prompts/                # 各节点 prompt（.md）+ __init__.py 装配
+│   ├── tools/                  # poi/food/maps/weather 工具（LangChain @tool）
+│   ├── data/curated_pois.json  # 精选 POI（离线兜底，可带 image_url）
+│   ├── scripts/                # init_local_db.sql / smoke_e2e.py / recompute_scores.py
 │   ├── tests/
-│   ├── pyproject.toml
-│   └── Dockerfile
+│   └── pyproject.toml
 ├── docker-compose.yml
 └── .gitignore
 ```
@@ -423,3 +446,14 @@ meng-travel-agent/
 | 活动会话存 **sessionStorage**，localStorage 只存种子/缓存/client_id | 两个标签页打开同一会话会互相把对方轮次插进同一份记录，必须按标签隔离；localStorage 只负责"新标签页从哪继续"与首屏秒下 |
 | 问候语是**前端本地播种**，不进服务端记录 | 它是 UI 招呼而非对话内容；写入会污染 L0 窗口与摘要。代价：刷新后若已有真实对话，问候不再出现（与主流对话产品一致） |
 | 前端零依赖 store 检查（`npm run check:store`） | 无 vitest/jest，而 tsc+build 抓不到"问候出现两次"这类状态缺陷；用 vite 自带的 esbuild 打包 store 在 node 里断言，零新增依赖。局限：测不到 React effect 接线与网络路径 |
+
+### 6.2 V4 系统成熟度的决策（本轮）
+
+| 决策 | 理由 |
+|------|------|
+| 后端拆 `api/` + `services/`，`main.py` 只做 `create_app()` 装配 | 673 行巨石混杂路由/SSE 格式化/图编排/流总线/存储五种职责；分层后路由只做传输、编排进 service，`_stream_graph` 与 `run_graph_to_queue` 共享 `iter_graph_events` 核心，消除重复。纯结构重构，461 passed + 3 skipped 零回归 |
+| **Chat(`/`) 为唯一主入口**，`/form` 降级为隐藏批量录入，`/result` 作全屏详情 | 对话式与表单向导两套范式并存导致"定位不清晰"；行程生成后直接落在对话内（`ChatPlanCard`），让"再加一天/预算加到八千"成为顺理成章的下一步 |
+| 深色模式"接线修好"而非移除 | 颜色改为 `rgb(var(--x) / <alpha-value>)` 引用 CSS 变量，`index.css` 为 light/dark 两套 RGB 三元组赋值；新增 `ThemeToggle` 挂在统一 `AppHeader` 上（此前 theme 已接线却无 UI 入口，是"假开关"） |
+| 实心 CTA 用**固定 `brand` 色**，不随主题翻转 | `blush-500/600` 既作实心按钮填充（配白字）又作强调文字，翻转会破坏其一；把强调文字/描边留在翻转的 blush 色阶，实心填充分离到固定 brand，两主题下白字对比度都成立 |
+| POI 配图走"真实图 + 主题占位插画"兜底 | `Activity.image_url` 由高德 POI `photos[0]` 富化（`output_format` 按 name 回填）；离线/无图时前端 `ActivityImage` 按活动类型渲染渐变占位，不臆造失效外链（假设 C 降级路径） |
+| 静态地图（T3.3）暂不做 | 需高德 key + 联网瓦片，离线环境不可行；POI 配图已提供视觉主体，地图另立计划 |

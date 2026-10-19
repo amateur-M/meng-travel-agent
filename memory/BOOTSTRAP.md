@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2（P0–P3）与 V3（对话记忆与持久化）均已完成**。后端测试 **422 passed + 1 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）、V3（对话记忆与持久化）与 V4（系统成熟度）均已完成**。后端测试 **461 passed + 3 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49 + 28/28。
 
 **V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
 起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：
@@ -13,6 +13,14 @@
 - **持久化与恢复**：活动会话存 sessionStorage（多标签隔离）、localStorage 存恢复种子/缓存/`client_id`；刷新水合完整记录；404 → 新建；末尾无回复 → "重新生成"；会话列表可新建/切换/重命名/删除；会话↔行程互相关联
 - **可观测性**：`/health` 暴露各存储真实状态与失败原因（原只报 `PoolTimeout`，掩盖了认证失败）；启动 ERROR 告警；连接失败超时 30s→5s
 - **移除 Redis**：会话迁 PG 后 Redis 零消费者（限流器本就未用），依赖/compose/env 均已清理
+
+**V4 升级摘要**（详见 [UPGRADE_V4_SYSTEM_MATURITY.md](UPGRADE_V4_SYSTEM_MATURITY.md)）：
+起因是用户反馈"前端丑、后端定位不清晰、不符合一个系统的标准"。定位决策：**对话式为唯一主入口**。已完成：
+- **P1 后端分层**：`main.py` 从 673 行巨石拆为 `api/`（四个 router + errors + rate_limit）+ `services/`（sse / plan_pipeline），`main.py` 收敛为 112 行 `create_app()`；抽出共享 `iter_graph_events` 消除 `_stream_graph` 与 `run_graph_to_queue` 的重复。纯结构重构，461 passed + 3 skipped 零回归
+- **P0 定位收口**：Chat(`/`) 为唯一主入口，`/form` 降级为隐藏批量录入，`/result` 作全屏详情；抽出统一 `AppHeader` + `CONTENT_WIDTH` 宽度令牌
+- **P2 前端 IA + 深色模式**：Chat 三条互斥横幅合并为单一状态条（`ChatStatusRegion`）+ 一体化 `ChatComposer`，主体收敛为三段；深色模式**真接线**（颜色变量化 + 固定 brand 实心色 + 新增 `ThemeToggle`，此前无 UI 入口是假开关）
+- **P3 视觉升级**：`Activity.image_url`（高德 photos / curated）+ `ActivityImage` 配图/主题占位插画；Chat 空状态插画 + 快速开始建议；PlanResult 目的地 hero 头图；`.ct-card`/`.ct-input`/`.ct-btn-primary` 令牌收敛
+- **P4 文档同步**：ARCHITECTURE §2.1/§4/§5/§6.2 对齐真实结构（去 `app/`、节点名、Chat 入口、V4 决策）
 
 **下一步行动**：
 1. 只剩**浏览器专属**的手工确认（服务端行为已全部自动化）：真实标签页刷新后的水合、
@@ -49,6 +57,7 @@
 | [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) | V2 技术债诊断与优先级重排理由 |
 | [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md) | V2 可跟踪执行计划（任务 ID + 状态） |
 | [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md) | V3 对话记忆设计 + P0–P4 任务表 + §11 设计修正与未闭环项 |
+| [UPGRADE_V4_SYSTEM_MATURITY.md](UPGRADE_V4_SYSTEM_MATURITY.md) | V4 系统成熟度：后端分层 + Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步（执行结果） |
 | [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI / 手工冒烟清单） |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
@@ -63,12 +72,12 @@
 3. 再读 memory/UPGRADE_V2_AUDIT.md —— 了解 V2 升级的 6 项技术债诊断与 P0-P3 优先级重排理由
 4. 再读 memory/UPGRADE_V2_EXECUTION_PLAN.md —— 了解 V2 可跟踪执行计划（任务带 ID+状态）
 5. 再读 memory/UPGRADE_V3_CONVERSATION_MEMORY.md —— 了解对话记忆分层（L0–L3）、12 场景恢复矩阵、**§11 设计修正与未闭环项**
-6. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议
+6. 再读 memory/UPGRADE_V4_SYSTEM_MATURITY.md —— 了解后端分层（api/+services/）、Chat 唯一主入口、深色模式修复、POI 配图
+7. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2 已对齐真实结构）
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成
-（唯一未闭环项：本地 PostgreSQL 需以超级用户执行一次 `backend/scripts/init_local_db.sql`）。
+当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成，V4 系统成熟度（后端分层 + Chat 唯一主入口 + 深色模式 + 视觉升级）已完成。
 
 ---
 
