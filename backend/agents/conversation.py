@@ -75,36 +75,63 @@ def _load_reply_prompt() -> str:
 
 # ── Slot postprocessing ─────────────────────────────────────────────
 
+def _is_empty_slot_value(val: Any) -> bool:
+    """True when a raw slot value carries no information.
+
+    The LLM is told to emit ``null`` for unmentioned fields, but in practice it
+    also returns ``""`` or the string ``"null"``. All three must be treated as
+    "not mentioned" — otherwise a follow-up turn ("想去大理") would clobber the
+    dates and budget collected in earlier turns with nulls.
+    """
+    if val is None:
+        return True
+    if isinstance(val, str):
+        return not val.strip() or val.strip().lower() == "null"
+    return False
+
+
 def postprocess_slots(raw_slots: dict, existing_slots: dict) -> dict:
     """Deterministic postprocessing of extracted slots.
 
     - Relative date parsing ("下周末" → concrete date)
     - Budget unit normalisation ("5千" → 5000)
-    - Merge with existing slots (new values override)
+    - Merge with existing slots (new values override; empty/None never erase)
     """
     processed = dict(existing_slots)
 
     for key, val in raw_slots.items():
-        if val is None:
-            continue
+        if _is_empty_slot_value(val):
+            continue  # never clobber an already-collected slot with "null"/""/None
 
         if key == "budget":
-            processed[key] = _normalise_budget(val)
+            normalised = _normalise_budget(val)
+            if normalised > 0:
+                processed[key] = normalised
         elif key == "start_date":
-            processed[key] = _normalise_date(val, existing_slots, is_start=True)
+            normalised = _normalise_date(val, existing_slots, is_start=True)
+            if normalised:
+                processed[key] = normalised
         elif key == "end_date":
-            processed[key] = _normalise_date(val, existing_slots, is_start=False)
+            normalised = _normalise_date(val, existing_slots, is_start=False)
+            if normalised:
+                processed[key] = normalised
         elif key == "preferences":
             if isinstance(val, list):
-                processed[key] = val
+                cleaned = [v for v in val if str(v).strip()]
+                if cleaned:
+                    processed[key] = cleaned
             elif isinstance(val, str):
-                processed[key] = [v.strip() for v in val.split(",")]
+                cleaned = [v.strip() for v in val.split(",") if v.strip()]
+                if cleaned:
+                    processed[key] = cleaned
         elif key == "pace":
             pace_str = str(val).strip()
             if pace_str in ("轻松", "适中", "充实"):
                 processed[key] = pace_str
         else:
-            processed[key] = str(val).strip() if val else None
+            text = str(val).strip()
+            if text and text != "null":
+                processed[key] = text
 
     return processed
 

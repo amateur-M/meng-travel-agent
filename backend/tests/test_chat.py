@@ -85,6 +85,46 @@ class TestPostprocessSlots:
         result = postprocess_slots({"budget": "8千"}, existing)
         assert result["budget"] == 8000.0
 
+    def test_null_does_not_clobber_existing(self):
+        """LLM emits null for unmentioned fields; it must never erase collected slots."""
+        existing = {
+            "destination": "大理",
+            "start_date": "2026-09-01",
+            "end_date": "2026-09-03",
+            "budget": 5000.0,
+        }
+        result = postprocess_slots(
+            {"destination": "大理", "start_date": None, "end_date": None, "budget": None},
+            existing,
+        )
+        assert result == existing
+
+    def test_empty_string_does_not_clobber_existing(self):
+        existing = {"destination": "大理", "budget": 5000.0}
+        result = postprocess_slots({"destination": "", "budget": ""}, existing)
+        assert result == existing
+
+    def test_string_null_does_not_clobber_existing(self):
+        """Some models return the string "null" instead of JSON null."""
+        existing = {"destination": "大理", "start_date": "2026-09-01", "budget": 5000.0}
+        result = postprocess_slots(
+            {"destination": "null", "start_date": "null", "budget": "null"},
+            existing,
+        )
+        assert result == existing
+
+    def test_partial_turn_keeps_untouched_slots(self):
+        """"想去大理"" on a session that already has dates/budget appends, not resets."""
+        existing = {"start_date": "2026-09-01", "end_date": "2026-09-03", "budget": 5000.0}
+        result = postprocess_slots(
+            {"destination": "大理", "start_date": None, "end_date": None, "budget": None},
+            existing,
+        )
+        assert result["destination"] == "大理"
+        assert result["start_date"] == "2026-09-01"
+        assert result["end_date"] == "2026-09-03"
+        assert result["budget"] == 5000.0
+
 
 class TestCheckReady:
 

@@ -1,9 +1,5 @@
 import { useState } from "react";
-import {
-  AnimatePresence,
-  motion,
-  type Variants,
-} from "framer-motion";
+import { motion, type Variants } from "framer-motion";
 import { ChevronDown, Moon, Sun, Sunrise } from "lucide-react";
 import type { DayPlan, Period, WeatherSwap } from "../../types/trip";
 import { TimelineCard } from "../TimelineCard/TimelineCard";
@@ -109,47 +105,48 @@ function TimelineDay({
         />
       </div>
 
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            key="activities"
-            className="overflow-hidden"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.3, ease: "easeInOut" }}
-          >
-            <div className="space-y-5 px-4 pb-5 sm:px-5">
-              {groups.map((group) => {
-                const meta = PERIOD_META[group.period];
-                const PeriodIcon = meta.Icon;
+      {/*
+        Expand/collapse via CSS grid rows (0fr → 1fr) instead of framer-motion's
+        height: "auto": the latter measures content height on mount and collapses
+        to 0 on the *second* expand (framer-motion 11), leaving a blank day.
+        grid-template-rows needs no measurement and animates reliably both ways.
+      */}
+      <div
+        className={`grid transition-[grid-template-rows] duration-300 ease-in-out ${
+          expanded ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="space-y-5 px-4 pb-5 sm:px-5">
+            {groups.map((group) => {
+              const meta = PERIOD_META[group.period];
+              const PeriodIcon = meta.Icon;
 
-                return (
-                  <div key={group.period} className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <PeriodIcon className="h-4 w-4 text-gold-400" />
-                      <h3 className="text-sm font-semibold text-ink-700">
-                        {meta.label}
-                      </h3>
-                      <div className="h-px flex-1 bg-cream-200" />
-                    </div>
-
-                    <div className="grid gap-3">
-                      {group.activities.map((activity, index) => (
-                        <TimelineCard
-                           key={`${activity.name}-${index}`}
-                           activity={activity}
-                           planId={planId}
-                         />
-                      ))}
-                    </div>
+              return (
+                <div key={group.period} className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <PeriodIcon className="h-4 w-4 text-gold-400" />
+                    <h3 className="text-sm font-semibold text-ink-700">
+                      {meta.label}
+                    </h3>
+                    <div className="h-px flex-1 bg-cream-200" />
                   </div>
-                );
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+                  <div className="grid gap-3">
+                    {group.activities.map((activity, index) => (
+                      <TimelineCard
+                         key={`${activity.name}-${index}`}
+                         activity={activity}
+                         planId={planId}
+                       />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </motion.section>
   );
 }
