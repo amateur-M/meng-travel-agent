@@ -16,6 +16,7 @@
 | V2-P3 | Done | 2026-10-15 | 2026-10-15 | 工程化：鉴权限流 + 可观测性 + 配置规范化 + 外部 API 韧性 |
 | V3 | Done | 2026-10-16 | 2026-10-16 | 对话记忆 L0–L3 + 会话持久化与恢复（T0.2 本地库初始化待执行） |
 | V4 | Done | 2026-10-17 | 2026-10-17 | 系统成熟度：后端分层（api/+services/）+ Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步 |
+| V5 | Done | 2026-11-02 | 2026-11-02 | 企业级健壮性审计与修复：SSE 重连/泄漏 + L3 跨租户隔离 + 熔断/幂等/连接池自愈 + 天气按日期取值 |
 
 ## M0 Completion Checklist
 
@@ -505,3 +506,37 @@ Executed the phased fix plan in `coupletrip-backend-issues-and-fix-plan.md` (bas
 - [x] `ARCHITECTURE.md` §5 目录改为真实结构（去 `app/`、加 `api/`+`services/`）；§4 数据流图节点名对齐实际 + 入口改 Chat；§2.1 State 改 `AgentState`；§6.2 补 V4 决策
 - [x] `ARCHITECTURE.md` §3.1 API 表已含全部端点（profile/recall/feedback/sessions），核对无需补
 - [x] 新增本文件 V4 章节 + `UPGRADE_V4_SYSTEM_MATURITY.md`；BOOTSTRAP/GOALS 追加 V4 摘要
+
+## V5 企业级健壮性审计与修复（2026-11-02）
+
+> 起因：用户要求"以企业级 Agent 视角分析代码现状，重点找 bug 与逻辑问题"，随后"按优先级修复"。
+> 完整清单与逐项现象/修复见 `UPGRADE_V5_ROBUSTNESS_FIXES.md`；关键取舍见 `KEY_DECISIONS.md` #27–#32。
+> 共识别 21 项，本轮修复 16 项，2 项标注为需部署/架构决策（未改代码），3 项低优先已并入或随手修。
+
+### P0 严重
+- [x] **P0-1 SSE 进行中重连 404**：`api/plan.py` 移除消费者断开时的 `plan_streams.pop`，清理权唯一归属后台任务，重连可续流（此前违背 V2 P0.3 承诺）
+- [x] **P0-2 plan_streams 内存泄漏**：`services/plan_pipeline.py` `_run_graph_to_queue` 的 `finally` 推完 sentinel 后统一回收，从不消费的流也不再泄漏
+- [x] **P0-3 L3 跨租户泄漏**：`plans` 加 `client_id`（幂等 ALTER + 索引），`save/list` 按归属落库与过滤，`POST /api/plan` 从 session 解析 client_id，`load_episodic_recall(client_id)` 按用户召回
+
+### P1 高
+- [x] **P1-4 熔断器被重试打穿**：`services/resilience.py` 改 `retry_if_not_exception_type(CircuitBreakerOpen)`，开路立即短路；计数加 `threading.Lock`（P2-13）
+- [x] **P1-5 regenerate 槽位非幂等**：`chat_sessions` 加 `slots_message_id`/`last_modify_patch`，`handle_chat` 检测同 message_id 已应用则复用已持久化槽位与补丁，相对补丁不再二次叠加
+- [x] **P1-6 连接池永久禁用**：`storage.py`/`conversation_store.py` 改 30s 冷却后可自愈重连
+- [x] **P1-7 天气位置索引错位**：`output_format` 按 `trip_date`、`add_couple_touch` 按 `start_date+day_index` 取天气，不再按 dict 顺序
+- [x] **P1-8 无日期先后校验**：`schemas/__init__.py` `TripPlanRequest` 加 `model_validator`，`end_date<start_date` 在 API 边界 422
+- [x] **P1-9 抽取用 0.7 温度**：`services/llm.py` 结构化调用固定 `STRUCTURED_TEMPERATURE=0.1`，自由文本保持 0.7，缓存键改 `(provider, temperature)`
+
+### P2 / P3
+- [x] **P2-10 删除死代码 `createPlan`**（含 `CreatePlanOptions` 与未用 `postEventStream` 导入）— `frontend/src/services/plan.ts`
+- [x] **P2-12 health 就绪探针**：新增 `/ready`（降级 503），`/health` 保持 200 liveness，不破坏既有 docker healthcheck
+- [x] **P2-14 amap 业务错误入熔断**：`status != "1"` 校验移入 `resilient_call` 内
+- [x] **P3-15 send 并发防护** + **P3-16 assistant 消息补 messageId** — `frontend/src/stores/chatStore.ts`
+
+### 未改动（需决策）
+- [ ] **#11 鉴权/IDOR**：属部署配置决策（生产开启 `auth_enabled`/`rate_limit_enabled`），非代码 bug
+- [ ] **#21 多 worker SSE**：`plan_streams` 进程内存，横向扩容前需换 Redis broker——架构演进
+
+### V5 验证记录
+- [x] 后端 `pytest -q`：**465 passed + 3 skipped**（修复前基线 11 failed：10 个 e2e 因 fake store 接口漂移 + 1 个 test_services 因温度签名变更，均随本轮同步修正）
+- [x] 前端 `tsc -p tsconfig.app.json --noEmit` 无错误 + `npm run check:store` **28/28**
+- [x] DB 变更全部幂等（`ADD COLUMN IF NOT EXISTS`），无需手工迁移脚本

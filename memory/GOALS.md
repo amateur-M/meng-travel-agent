@@ -1,9 +1,37 @@
 ## Current Iteration Goals
 
-**Current Milestone**: V4 系统成熟度重构（Complete）
+**Current Milestone**: V5 企业级健壮性审计与修复（Complete）
 
-**Objective**: 让 CoupleTrip 看起来与内部都**像一个成熟系统** —— 产品定位收口（对话式
-为唯一主入口）、后端分层（api/ + services/）、前端信息架构重排与深色模式修复、视觉升级。
+**Objective**: 以企业级 Agent 视角审查全栈代码，按优先级修复 SSE 生命周期、跨租户隔离、熔断/幂等/连接池自愈等 bug 与逻辑问题。
+
+### V5 Completion Summary (2026-11-02)
+
+完整审计清单与逐项现象/修复见 `UPGRADE_V5_ROBUSTNESS_FIXES.md`；关键取舍见 `KEY_DECISIONS.md` #27–#32。
+起因：用户要求"以企业级 Agent 视角分析代码现状，重点找 bug 与逻辑问题"，随后"按优先级修复"。共识别 21 项，修复 16 项。
+
+**P0 严重**
+- SSE 进行中重连 404：清理权唯一归属后台任务（`api/plan.py`），重连可续流
+- plan_streams 内存泄漏：`plan_pipeline.py` 后台任务 `finally` 统一回收
+- L3 跨租户泄漏：`plans` 加 `client_id`，`load_episodic_recall(client_id)` 按用户召回
+
+**P1 高**
+- 熔断器被重试打穿：`resilient_call` 排除 `CircuitBreakerOpen` + 计数加锁
+- regenerate 槽位非幂等：`chat_sessions` 记 `slots_message_id`/`last_modify_patch`，同轮重试不二次叠加
+- 连接池永久禁用 → 30s 冷却自愈；天气按 `trip_date`/日期取值；`TripPlanRequest` 加日期先后校验；结构化抽取固定 `temperature=0.1`
+
+**P2 / P3**
+- 删死代码 `createPlan`；`health.py` 新增 `/ready` 就绪探针（降级 503）；amap 业务错误入熔断；`chatStore.send` 并发防护 + assistant 补 messageId
+
+### V5 Verification
+
+- 后端 `pytest -q`：**465 passed + 3 skipped**（修复前基线 11 failed，均随本轮同步修正）
+- 前端：`tsc -p tsconfig.app.json --noEmit` 无错误；`npm run check:store` **28/28**
+- DB 变更全部幂等（`ADD COLUMN IF NOT EXISTS`），无需手工迁移
+
+### V5 Known Gaps
+
+1. **#11 鉴权/IDOR 未改**：属部署配置决策（生产需开 `auth_enabled`/`rate_limit_enabled`），非代码 bug
+2. **#21 多 worker SSE fan-out 仍不支持**：`plan_streams` 是进程内存，横向扩容前需换 Redis broker
 
 ### V4 Completion Summary (2026-10-17)
 
@@ -120,6 +148,7 @@
 | V2-P3 — Production (auth / rate limit / observability / resilience) | ✅ Done |
 | V3 — Conversation memory (L0–L3) + persistence & recovery | ✅ Done（T0.2 待执行） |
 | V4 — System maturity (backend layering + Chat-only entry + dark mode + visual) | ✅ Done |
+| V5 — Enterprise robustness audit & fixes (SSE / tenant isolation / circuit breaker / idempotency) | ✅ Done |
 
 ### Next Steps
 

@@ -7,6 +7,7 @@ Falls back to the M1 template bank when no API key is configured.
 
 import json
 import logging
+from datetime import date, timedelta
 from typing import Dict, Any, List
 
 from agents.state import AgentState
@@ -197,7 +198,13 @@ async def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     draft = state.get("draft_itinerary", {})
     all_notes: List[str] = []
 
-    weather_keys = list(weather.keys())
+    # P1-7: resolve each day's weather by its real ISO date, not by position in
+    # the weather dict. This node runs before output_format stamps trip_date, so
+    # derive the date from start_date + day_index (same rule output_format uses).
+    try:
+        start = date.fromisoformat(str(params.get("start_date", "")))
+    except (ValueError, TypeError):
+        start = date.today()
 
     # ── Phase 1: flatten all activities into a meta list ──────────
     # Each entry: (day_idx, act_ref, weather_condition)
@@ -205,7 +212,8 @@ async def add_couple_touch(state: AgentState) -> Dict[str, Any]:
     activities_meta: List[dict] = []
 
     for day_idx, day_data in enumerate(draft.get("days", [])):
-        date_key = weather_keys[day_idx] if day_idx < len(weather_keys) else ""
+        day_index = int(day_data.get("day_index", day_idx))
+        date_key = (start + timedelta(days=day_index)).isoformat()
         w = weather.get(date_key, {})
         condition = w.get("condition", "晴")
 

@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2（P0–P3）、V3（对话记忆与持久化）与 V4（系统成熟度）均已完成**。后端测试 **461 passed + 3 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49 + 28/28。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）、V3（对话记忆与持久化）、V4（系统成熟度）与 V5（企业级健壮性审计修复）均已完成**。后端测试 **465 passed + 3 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49 + 28/28。
 
 **V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
 起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：
@@ -21,6 +21,14 @@
 - **P2 前端 IA + 深色模式**：Chat 三条互斥横幅合并为单一状态条（`ChatStatusRegion`）+ 一体化 `ChatComposer`，主体收敛为三段；深色模式**真接线**（颜色变量化 + 固定 brand 实心色 + 新增 `ThemeToggle`，此前无 UI 入口是假开关）
 - **P3 视觉升级**：`Activity.image_url`（高德 photos / curated）+ `ActivityImage` 配图/主题占位插画；Chat 空状态插画 + 快速开始建议；PlanResult 目的地 hero 头图；`.ct-card`/`.ct-input`/`.ct-btn-primary` 令牌收敛
 - **P4 文档同步**：ARCHITECTURE §2.1/§4/§5/§6.2 对齐真实结构（去 `app/`、节点名、Chat 入口、V4 决策）
+
+**V5 升级摘要**（详见 [UPGRADE_V5_ROBUSTNESS_FIXES.md](UPGRADE_V5_ROBUSTNESS_FIXES.md)）：
+起因是用户要求"以企业级 Agent 视角分析代码、重点找 bug，并按优先级修复"。共识别 21 项，修复 16 项（关键取舍见 KEY_DECISIONS #27–#32）：
+- **P0 严重**：① SSE"进行中"重连必然 404 → 清理权唯一归属后台任务（`api/plan.py`）；② `plan_streams` 内存泄漏 → `plan_pipeline.py` `finally` 统一回收；③ L3 跨租户泄漏 → `plans` 加 `client_id`、`load_episodic_recall(client_id)` 按用户召回
+- **P1 高**：熔断器被 tenacity 重试打穿 → `resilient_call` 排除 `CircuitBreakerOpen` + 计数加锁；regenerate 槽位非幂等 → `chat_sessions` 记 `slots_message_id`/`last_modify_patch`；连接池永久禁用 → 30s 冷却自愈；天气按 `trip_date`/日期取值；`TripPlanRequest` 加日期先后校验；结构化抽取固定 `temperature=0.1`
+- **P2/P3**：删死代码 `createPlan`；`health.py` 新增 `/ready` 就绪探针（降级 503，`/health` 保持 200 liveness）；amap 业务错误入熔断；`chatStore.send` 并发防护 + assistant 补 messageId
+- **未改（需决策）**：#11 鉴权/IDOR 属部署配置（生产开 `auth_enabled`）；#21 多 worker SSE 属架构演进（需 Redis broker）
+- **验证**：后端 465 passed + 3 skipped、前端 `tsc --noEmit` 无错 + `check:store` 28/28；DB 变更全部幂等（`ADD COLUMN IF NOT EXISTS`），无需手工迁移
 
 **下一步行动**：
 1. 只剩**浏览器专属**的手工确认（服务端行为已全部自动化）：真实标签页刷新后的水合、
@@ -52,12 +60,13 @@
 |------|------|
 | [ROADMAP.md](ROADMAP.md) | 实现路线图（8 个里程碑 + 验收标准 + 依赖关系） |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 系统架构（LangGraph 设计、记忆分层、API 协议、数据模型） |
-| [PROGRESS.md](PROGRESS.md) | 开发进度（里程碑 + V2/V3 完成清单） |
+| [PROGRESS.md](PROGRESS.md) | 开发进度（里程碑 + V2/V3/V4/V5 完成清单） |
 | [GOALS.md](GOALS.md) | 当前迭代目标与验证记录 |
 | [UPGRADE_V2_AUDIT.md](UPGRADE_V2_AUDIT.md) | V2 技术债诊断与优先级重排理由 |
 | [UPGRADE_V2_EXECUTION_PLAN.md](UPGRADE_V2_EXECUTION_PLAN.md) | V2 可跟踪执行计划（任务 ID + 状态） |
 | [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md) | V3 对话记忆设计 + P0–P4 任务表 + §11 设计修正与未闭环项 |
 | [UPGRADE_V4_SYSTEM_MATURITY.md](UPGRADE_V4_SYSTEM_MATURITY.md) | V4 系统成熟度：后端分层 + Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步（执行结果） |
+| [UPGRADE_V5_ROBUSTNESS_FIXES.md](UPGRADE_V5_ROBUSTNESS_FIXES.md) | V5 企业级健壮性审计与修复清单（P0–P3 逐项现象/修复/文件 + 验证记录 + DB 迁移提示） |
 | [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI / 手工冒烟清单） |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
@@ -73,11 +82,12 @@
 4. 再读 memory/UPGRADE_V2_EXECUTION_PLAN.md —— 了解 V2 可跟踪执行计划（任务带 ID+状态）
 5. 再读 memory/UPGRADE_V3_CONVERSATION_MEMORY.md —— 了解对话记忆分层（L0–L3）、12 场景恢复矩阵、**§11 设计修正与未闭环项**
 6. 再读 memory/UPGRADE_V4_SYSTEM_MATURITY.md —— 了解后端分层（api/+services/）、Chat 唯一主入口、深色模式修复、POI 配图
-7. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2 已对齐真实结构）
+7. 再读 memory/UPGRADE_V5_ROBUSTNESS_FIXES.md —— 了解企业级健壮性审计与 P0–P3 修复（SSE 重连/泄漏、跨租户隔离、熔断/幂等/连接池自愈）
+8. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2 已对齐真实结构）
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成，V4 系统成熟度（后端分层 + Chat 唯一主入口 + 深色模式 + 视觉升级）已完成。
+当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成，V4 系统成熟度（后端分层 + Chat 唯一主入口 + 深色模式 + 视觉升级）已完成，V5 企业级健壮性审计与修复（SSE 生命周期 + 跨租户隔离 + 熔断/幂等/连接池自愈）已完成。
 
 ---
 

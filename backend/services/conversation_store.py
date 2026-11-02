@@ -27,6 +27,7 @@ Design notes:
 import asyncio
 import json
 import logging
+import time
 import uuid
 from typing import Optional
 
@@ -42,6 +43,12 @@ logger = logging.getLogger("coupletrip")
 _pool: Optional[ConnectionPool] = None
 _pool_unavailable = False
 _pool_error: Optional[str] = None
+# P1-6: how long to skip retrying after the pool fails to come up. Without a
+# cooldown the flag was permanent — a database that was briefly unreachable at
+# startup (a common docker-compose race) disabled persistence for the whole
+# process lifetime even after it recovered.
+_POOL_RETRY_COOLDOWN = 30.0
+_pool_unavailable_since: float = 0.0
 
 _SLOT_FIELDS = (
     "destination",
@@ -76,11 +83,15 @@ def _get_pool() -> Optional[ConnectionPool]:
     A failure is cached so later calls skip instantly instead of re-paying the
     connect timeout, and the reason is kept for :meth:`health`.
     """
-    global _pool, _pool_unavailable, _pool_error
+    global _pool, _pool_unavailable, _pool_error, _pool_unavailable_since
     if _pool is not None:
         return _pool
     if _pool_unavailable:
-        return None
+        # P1-6: retry once the cooldown has elapsed so a recovered database
+        # re-enables persistence without a process restart.
+        if time.monotonic() - _pool_unavailable_since < _POOL_RETRY_COOLDOWN:
+            return None
+        _pool_unavailable = False
 
     pool: Optional[ConnectionPool] = None
     try:
@@ -110,6 +121,7 @@ def _get_pool() -> Optional[ConnectionPool]:
             except Exception:  # pragma: no cover - best-effort cleanup
                 pass
         _pool_unavailable = True
+        _pool_unavailable_since = time.monotonic()
         return None
 
 
@@ -139,6 +151,19 @@ def _init_ddl(conn) -> None:
         cur.execute("""
             ALTER TABLE chat_sessions
             ADD COLUMN IF NOT EXISTS summary_message_count INT NOT NULL DEFAULT 0
+        """)
+        # P1-5: which turn last mutated the slots, and the incremental patch it
+        # applied. A modify patch resolves *relative* shifts ("再加一天") against
+        # the current slots, so retrying the same turn (regenerate after the
+        # reply failed to arrive) would compound it. Recording the owning
+        # message_id lets handle_chat apply each turn's mutation at most once.
+        cur.execute("""
+            ALTER TABLE chat_sessions
+            ADD COLUMN IF NOT EXISTS slots_message_id TEXT
+        """)
+        cur.execute("""
+            ALTER TABLE chat_sessions
+            ADD COLUMN IF NOT EXISTS last_modify_patch JSONB
         """)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS chat_messages (
@@ -240,7 +265,8 @@ class ConversationStore:
                                s.plan_request, s.last_plan_id, s.client_id,
                                s.created_at, s.updated_at,
                                COALESCE(c.cnt, 0) AS message_count,
-                               s.summary_message_count
+                               s.summary_message_count,
+                               s.slots_message_id, s.last_modify_patch
                         FROM chat_sessions s
                         LEFT JOIN (
                             SELECT session_id, COUNT(*) AS cnt
@@ -265,6 +291,8 @@ class ConversationStore:
                 "updated_at": _iso(row[8]),
                 "message_count": int(row[9]),
                 "summary_message_count": int(row[10] or 0),
+                "slots_message_id": row[11],
+                "last_modify_patch": row[12],
             }
         except Exception as exc:
             logger.warning("ConversationStore.get_session failed: %s", exc)
@@ -525,25 +553,57 @@ class ConversationStore:
 
     # ── session state ─────────────────────────────────────────────
 
-    async def update_slots(self, session_id: str, slots: dict) -> bool:
-        """Persist the merged slot values for a session."""
-        return await asyncio.to_thread(self._update_slots, session_id, slots)
+    async def update_slots(
+        self,
+        session_id: str,
+        slots: dict,
+        message_id: Optional[str] = None,
+        modify_patch: Optional[dict] = None,
+    ) -> bool:
+        """Persist the merged slot values for a session.
 
-    def _update_slots(self, session_id: str, slots: dict) -> bool:
+        P1-5: ``message_id`` records which turn produced these slots and
+        ``modify_patch`` the incremental change it applied, so a retried turn
+        can be detected and its (relative) mutation not re-applied.
+        """
+        return await asyncio.to_thread(
+            self._update_slots, session_id, slots, message_id, modify_patch
+        )
+
+    def _update_slots(
+        self,
+        session_id: str,
+        slots: dict,
+        message_id: Optional[str] = None,
+        modify_patch: Optional[dict] = None,
+    ) -> bool:
         pool = _get_pool()
         if pool is None:
             return False
         try:
             cleaned = {k: v for k, v in slots.items() if k in _SLOT_FIELDS and v is not None}
+            patch_payload = (
+                json.dumps(modify_patch, ensure_ascii=False)
+                if modify_patch is not None
+                else None
+            )
             with pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute(
                         """
                         UPDATE chat_sessions
-                        SET slots = %s::jsonb, updated_at = now()
+                        SET slots = %s::jsonb,
+                            slots_message_id = %s,
+                            last_modify_patch = %s::jsonb,
+                            updated_at = now()
                         WHERE session_id = %s
                         """,
-                        (json.dumps(cleaned, ensure_ascii=False), session_id),
+                        (
+                            json.dumps(cleaned, ensure_ascii=False),
+                            message_id,
+                            patch_payload,
+                            session_id,
+                        ),
                     )
                     updated = cur.rowcount
                 conn.commit()

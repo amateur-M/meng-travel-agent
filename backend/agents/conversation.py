@@ -645,15 +645,20 @@ def _planning_reply(intent: str, slots: dict) -> str:
     return f"记下了～还差{hints}，一起补全吧？"
 
 
-async def load_episodic_recall() -> dict:
+async def load_episodic_recall(client_id: str | None = None) -> dict:
     """L3: recent trips and per-activity thumbs feedback.
 
     Both live in the tables built earlier (``plans``, ``plan_feedback``) — this
     is the first time the feedback table is read on the live path; until now it
     was only consumed by the offline recompute script.
+
+    P0-3: trips are scoped to ``client_id`` so one user's past trips are never
+    recalled into another user's conversation. ``client_id=None`` keeps the
+    single-user/no-auth behaviour. Activity-level feedback stays global: it is
+    an aggregate popularity signal keyed by activity name, not personal data.
     """
     try:
-        trips = await asyncio.to_thread(plan_store.list, 20, 0)
+        trips = await asyncio.to_thread(plan_store.list, 20, 0, client_id)
         feedback = await asyncio.to_thread(plan_store.list_feedback)
     except Exception as exc:
         logger.warning("L3 recall failed, continuing without it: %s", exc)
@@ -726,7 +731,7 @@ async def handle_chat(
 
     # L2 + L3 + L1, assembled most-durable-first (order pinned by tests).
     profile = await conversation_store.get_profile(client_id) if client_id else {}
-    episodic = await load_episodic_recall()
+    episodic = await load_episodic_recall(client_id)
     context = memory.memory_context(
         profile=profile,
         past_trips=memory.render_past_trips(episodic["trips"], episodic["feedback"]),
@@ -769,16 +774,36 @@ async def handle_chat(
         raw_modify_patch = result.get("modify_patch")
 
     # ── Slots: postprocess, then fold the modify patch on top (P1.2) ──
-    processed_slots = postprocess_slots(raw_slots, existing_slots)
+    # P1-5: a retried turn (regenerate after the reply failed to arrive) reuses
+    # the same message_id. The modify patch resolves *relative* shifts against
+    # the current slots, so re-applying it would compound ("再加一天" twice → +2
+    # days). When this message_id already owns the persisted slots, trust them
+    # and reuse the stored patch instead of recomputing a second mutation.
+    already_applied = (
+        bool(user_message_id)
+        and session.get("slots_message_id") == user_message_id
+    )
 
-    modify_patch = None
-    if intent == "modify_plan":
-        patch_values = postprocess_patch(raw_modify_patch, processed_slots)
-        if patch_values:
-            processed_slots = {**processed_slots, **patch_values}
-            modify_patch = ModifyPatch(**patch_values)
+    if already_applied:
+        processed_slots = dict(existing_slots)
+        stored_patch = session.get("last_modify_patch")
+        modify_patch = ModifyPatch(**stored_patch) if stored_patch else None
+    else:
+        processed_slots = postprocess_slots(raw_slots, existing_slots)
+        modify_patch = None
+        patch_values: dict = {}
+        if intent == "modify_plan":
+            patch_values = postprocess_patch(raw_modify_patch, processed_slots)
+            if patch_values:
+                processed_slots = {**processed_slots, **patch_values}
+                modify_patch = ModifyPatch(**patch_values)
 
-    await conversation_store.update_slots(sid, processed_slots)
+        await conversation_store.update_slots(
+            sid,
+            processed_slots,
+            message_id=user_message_id,
+            modify_patch=patch_values or None,
+        )
 
     # Title the session from the first substantive message (a greeting or a
     # one-off question is not a useful label for the conversation list).

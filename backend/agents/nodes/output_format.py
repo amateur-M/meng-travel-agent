@@ -35,7 +35,6 @@ def _normalise_days(params: dict, draft: dict, weather: dict, pois: list | None 
         start = date.today()
 
     images = _image_lookup(pois or [])
-    weather_keys = list(weather.keys())
     normalised = []
 
     for index, day in enumerate(draft.get("days", [])):
@@ -44,8 +43,11 @@ def _normalise_days(params: dict, draft: dict, weather: dict, pois: list | None 
         day_out["day_index"] = day_index
         day_out["trip_date"] = (start + timedelta(days=day_index)).isoformat()
 
-        weather_key = weather_keys[day_index] if day_index < len(weather_keys) else ""
-        item = weather.get(weather_key, {})
+        # P1-7: look weather up by the day's actual trip_date, not by position
+        # in the weather dict. weather_data is keyed by ISO date, so positional
+        # indexing misaligns whenever the forecast's coverage/order differs from
+        # the trip dates (missing day, range clamp, mixed mock/real sources).
+        item = weather.get(day_out["trip_date"], {})
         day_out["weather_condition"] = day_out.get(
             "weather_condition",
             day_out.get("weather", item.get("condition", "晴")),

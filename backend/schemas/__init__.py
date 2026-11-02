@@ -4,7 +4,7 @@ from datetime import date as DateType, time
 from enum import Enum
 from typing import Optional, List
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ── Enums ────────────────────────────────────────────────────────
@@ -54,6 +54,17 @@ class TripPlanRequest(BaseModel):
         None,
         description="发起规划的对话会话 ID（V3/P1）；传入后该会话会记住本次行程",
     )
+
+    @model_validator(mode="after")
+    def _validate_date_order(self) -> "TripPlanRequest":
+        """P1-8: reject a return date before the departure date at the API
+        boundary. Previously ``parse_input`` silently collapsed reversed dates
+        into a 1-day trip (``max(1, (ed - sd).days + 1)``), producing a plan the
+        user never asked for with no signal that anything was wrong.
+        """
+        if self.end_date < self.start_date:
+            raise ValueError("end_date 不能早于 start_date")
+        return self
 
 
 # ── Core Models ──────────────────────────────────────────────────

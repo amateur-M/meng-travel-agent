@@ -98,9 +98,19 @@ async def _run_graph_to_queue(initial_state: dict, plan_id: str, queue: asyncio.
     the client connects/reconnects to GET stream, the graph runs exactly once
     per plan_id. The sentinel is always pushed (even on an unexpected error) so
     a waiting consumer never hangs.
+
+    Cleanup ownership (P0-2): the bus entry is removed here — and only here —
+    after the stream has fully terminated and the result/error is persisted.
+    By that point ``GET /stream`` reconnects are served from PostgreSQL replay,
+    so dropping the in-memory queue is safe. This guarantees the entry is freed
+    even when no consumer ever attached (previously it leaked forever), while
+    keeping it alive during execution so a mid-flight reconnect can re-attach.
     """
     try:
         async for event in _stream_graph(initial_state, plan_id):
             await queue.put(event)
     finally:
         await queue.put(_STREAM_SENTINEL)
+        # Single-owner cleanup: active consumers hold their own queue reference
+        # and will drain the sentinel; new consumers hit the DB-replay path.
+        plan_streams.pop(plan_id, None)

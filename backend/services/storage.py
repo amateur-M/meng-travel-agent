@@ -16,6 +16,7 @@ Design notes:
 
 import json
 import logging
+import time
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List
@@ -32,6 +33,11 @@ logger = logging.getLogger("coupletrip")
 _pool: Optional[ConnectionPool] = None
 _pool_unavailable = False
 _pool_error: Optional[str] = None
+# P1-6: retry the pool after a cooldown instead of caching unavailability for
+# the whole process lifetime (a startup race with the database would otherwise
+# disable persistence permanently even once it recovered).
+_POOL_RETRY_COOLDOWN = 30.0
+_pool_unavailable_since: float = 0.0
 
 
 def _get_pool() -> Optional[ConnectionPool]:
@@ -43,11 +49,15 @@ def _get_pool() -> Optional[ConnectionPool]:
     leaving operators to guess (T0.4: the silent degradation here previously
     hid a local misconfiguration for the whole V2 cycle).
     """
-    global _pool, _pool_unavailable, _pool_error
+    global _pool, _pool_unavailable, _pool_error, _pool_unavailable_since
     if _pool is not None:
         return _pool
     if _pool_unavailable:
-        return None
+        # P1-6: allow a retry once the cooldown has elapsed so a recovered
+        # database re-enables persistence without a process restart.
+        if time.monotonic() - _pool_unavailable_since < _POOL_RETRY_COOLDOWN:
+            return None
+        _pool_unavailable = False
 
     pool: Optional[ConnectionPool] = None
     try:
@@ -79,6 +89,7 @@ def _get_pool() -> Optional[ConnectionPool]:
             except Exception:  # pragma: no cover - best-effort cleanup
                 pass
         _pool_unavailable = True
+        _pool_unavailable_since = time.monotonic()
         return None
 
 
@@ -106,13 +117,22 @@ def _init_ddl(conn) -> None:
                 request      JSONB NOT NULL,
                 response     JSONB,
                 status       TEXT NOT NULL DEFAULT 'processing',
+                client_id    TEXT,
                 created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
+        # P0-3: owner column for multi-tenant scoping of L3 recall. The
+        # IF NOT EXISTS ALTER back-fills the column on databases created
+        # before this change (CREATE TABLE IF NOT EXISTS won't add columns).
+        cur.execute("ALTER TABLE plans ADD COLUMN IF NOT EXISTS client_id TEXT")
         cur.execute("""
             CREATE INDEX IF NOT EXISTS idx_plans_created_at
             ON plans (created_at DESC)
+        """)
+        cur.execute("""
+            CREATE INDEX IF NOT EXISTS idx_plans_client_id
+            ON plans (client_id, created_at DESC)
         """)
         # P2.3: feedback table for user thumbs up/down on activities
         cur.execute("""
@@ -141,8 +161,12 @@ class PlanStore:
     """CRUD interface for trip-plan records backed by PostgreSQL."""
 
     def save(self, plan_id: str, request: dict, response: Optional[dict] = None,
-             status: str = "processing") -> bool:
-        """Insert a new plan record (or upsert if plan_id exists)."""
+             status: str = "processing", client_id: Optional[str] = None) -> bool:
+        """Insert a new plan record (or upsert if plan_id exists).
+
+        ``client_id`` (P0-3) records the owning browser so L3 recall and the
+        history list can be scoped per-user instead of leaking across tenants.
+        """
         pool = _get_pool()
         if pool is None:
             return False
@@ -150,18 +174,20 @@ class PlanStore:
             with pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
-                        INSERT INTO plans (plan_id, request, response, status)
-                        VALUES (%s, %s::jsonb, %s::jsonb, %s)
+                        INSERT INTO plans (plan_id, request, response, status, client_id)
+                        VALUES (%s, %s::jsonb, %s::jsonb, %s, %s)
                         ON CONFLICT (plan_id) DO UPDATE
                             SET request   = EXCLUDED.request,
                                 response  = COALESCE(EXCLUDED.response, plans.response),
                                 status    = EXCLUDED.status,
+                                client_id = COALESCE(EXCLUDED.client_id, plans.client_id),
                                 updated_at = now()
                     """, (
                         plan_id,
                         json.dumps(request, ensure_ascii=False),
                         json.dumps(response, ensure_ascii=False) if response is not None else None,
                         status,
+                        client_id,
                     ))
                 conn.commit()
             return True
@@ -222,8 +248,15 @@ class PlanStore:
             logger.warning("PlanStore.get failed: %s", exc)
             return None
 
-    def list(self, limit: int = 20, offset: int = 0) -> list[dict]:
-        """Return a paginated list of plan summaries, newest first."""
+    def list(self, limit: int = 20, offset: int = 0,
+             client_id: Optional[str] = None) -> list[dict]:
+        """Return a paginated list of plan summaries, newest first.
+
+        When ``client_id`` is given (P0-3) only that owner's plans are returned,
+        so L3 recall and the history endpoint never leak another user's trips.
+        ``client_id=None`` preserves the single-user/no-auth behaviour of
+        listing everything.
+        """
         pool = _get_pool()
         if pool is None:
             return []
@@ -236,9 +269,10 @@ class PlanStore:
                                request->>'end_date' AS end_date,
                                status, created_at
                         FROM plans
+                        WHERE (%s::text IS NULL OR client_id = %s)
                         ORDER BY created_at DESC
                         LIMIT %s OFFSET %s
-                    """, (limit, offset))
+                    """, (client_id, client_id, limit, offset))
                     rows = cur.fetchall()
             return [
                 {

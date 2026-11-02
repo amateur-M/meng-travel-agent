@@ -53,6 +53,8 @@ class InMemoryConversationStore:
                 "plan_request": None,
                 "last_plan_id": None,
                 "client_id": client_id,
+                "slots_message_id": None,
+                "last_modify_patch": None,
                 "created_at": stamp,
                 "updated_at": stamp,
             }
@@ -148,12 +150,18 @@ class InMemoryConversationStore:
 
     # ── session state ─────────────────────────────────────────────
 
-    async def update_slots(self, session_id: str, slots: dict) -> bool:
+    async def update_slots(
+        self, session_id: str, slots: dict, message_id=None, modify_patch=None
+    ) -> bool:
         if session_id not in self.sessions:
             return False
-        self.sessions[session_id]["slots"] = {
+        session = self.sessions[session_id]
+        session["slots"] = {
             k: v for k, v in slots.items() if k in _SLOT_FIELDS and v is not None
         }
+        # P1-5: mirror the real store so turn-level idempotency is exercised.
+        session["slots_message_id"] = message_id
+        session["last_modify_patch"] = modify_patch
         self._touch(session_id)
         return True
 

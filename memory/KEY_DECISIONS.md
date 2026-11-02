@@ -246,3 +246,55 @@
 - `CoupleQuote` is a larger figure-style block suited for day summaries; per-activity notes need a compact inline treatment
 - Period accent colors give visual rhythm at a glance: morning gold, afternoon blush, evening indigo
 - 留白 cards get a dashed border + hidden cost to visually signal "this is intentional downtime, not a missing activity"
+
+### 27. SSE 流总线清理权唯一归属后台任务（V5 P0-1/P0-2）
+
+**Decision**（2026-11-02）：`plan_streams[plan_id]` 的删除只发生在 `_run_graph_to_queue` 的 `finally`（推完 sentinel 后），消费者断开时不再 `pop`。
+
+**Rationale**：
+- 消费者断开就删总线，会让"进行中"的重连拿到 `None` → 404，直接违背 V2 P0.3「断线重连不重跑」
+- 结果落库后，新消费者走 DB 重放路径，因此流结束时删内存 queue 是安全的；进行中的重连仍能重新挂载同一 queue
+- 单一所有者清理也堵住了"POST 后从不消费"的内存泄漏
+
+### 28. 行程按 client_id 归属，L3 召回按用户隔离（V5 P0-3）
+
+**Decision**（2026-11-02）：`plans` 表增 `client_id` 列，`PlanStore.list(..., client_id=)` 按归属过滤；`load_episodic_recall(client_id)` 只召回该用户的行程。活动级 `plan_feedback` 聚合保持全局。
+
+**Rationale**：
+- L3 此前取全局最新 20 条 plan，多用户下会把他人行程召回进当前对话（隐私泄漏）
+- 归属从 `session_id → chat_sessions.client_id` 解析，无需前端新增字段
+- `client_id=None` 保留单用户/无鉴权部署的"列全部"语义；历史行 `client_id` 为 NULL 时按具体 client 过滤不召回，属 fail-safe
+- 反馈是"按 activity_name 聚合的人气信号"，非个人数据，故不隔离
+
+### 29. 对话轮次级幂等：槽位变更至多应用一次（V5 P1-5）
+
+**Decision**（2026-11-02）：`chat_sessions` 记录 `slots_message_id` 与 `last_modify_patch`；`handle_chat` 发现当前 `message_id` 已拥有持久化槽位时，复用已存槽位与补丁，跳过二次变更。
+
+**Rationale**：
+- `regenerate` 是"回复未到达、用同一 message_id 重试失败轮"（recovery #5），不是重新生成
+- modify 补丁按**相对**当前槽位解析（"再加一天"→ end_date+1）；消息 append 靠 `message_id` 幂等，但槽位变更此前无幂等键，重试会叠加（+2 天）
+- 记录"哪一轮改的槽位"把幂等从消息级补齐到轮次级
+
+### 30. 结构化抽取与自由文本用不同 temperature（V5 P1-9）
+
+**Decision**（2026-11-02）：`services/llm.py` 区分 `STRUCTURED_TEMPERATURE=0.1`（`call_llm`/`acall_llm`，意图/槽位/JSON 契约）与 `CREATIVE_TEMPERATURE=0.7`（`acall_llm_text`，问答/摘要/文案）；client 缓存键改 `(provider, temperature)`。
+
+**Rationale**：
+- 结构化任务需要确定性，0.7 会让同一输入抽出不同槽位，直接加剧 #29 的非幂等风险
+- 自由文本仍需温度保证语气自然，故分离而非一刀切调低
+
+### 31. 熔断开路异常排除在重试之外（V5 P1-4）
+
+**Decision**（2026-11-02）：`resilient_call` 用 `retry_if_not_exception_type(CircuitBreakerOpen)`，`CircuitBreaker` 计数用 `threading.Lock` 保护。
+
+**Rationale**：
+- `retry_if_exception_type((Exception,))` 会把 `CircuitBreakerOpen` 也重试，熔断打开时反而空跑 3 次 + 指数退避（同步线程阻塞 ~3s），失去"快速短路"意义
+- `resilient_call` 是同步函数、经 `asyncio.to_thread` 并发调用，计数无锁存在竞态
+
+### 32. 持久化不可用后按冷却自愈，而非永久禁用（V5 P1-6）
+
+**Decision**（2026-11-02）：`storage.py`/`conversation_store.py` 的池不可用标志配 30s 冷却（`_POOL_RETRY_COOLDOWN` + `_pool_unavailable_since`），冷却后允许重试。
+
+**Rationale**：
+- 原实现一旦置位 `_pool_unavailable` 便进程生命周期内不再重连；docker-compose 启动竞态（DB 未就绪）会导致"静默降级到无状态且永不自愈"
+- 冷却在"不每请求重付连接超时"与"DB 恢复后自动重连"之间取得平衡

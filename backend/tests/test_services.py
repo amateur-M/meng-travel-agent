@@ -108,7 +108,14 @@ class TestCallLlmProviderDefault:
     """call_llm defaults to settings.default_llm_provider."""
 
     def test_uses_default_provider_when_none_given(self):
-        """If provider is omitted, settings.default_llm_provider is used."""
+        """If provider is omitted, settings.default_llm_provider is used.
+
+        P1-9: structured calls pin a low temperature, so _get_llm is now
+        invoked with (provider, STRUCTURED_TEMPERATURE) rather than provider
+        alone.
+        """
+        from services.llm import STRUCTURED_TEMPERATURE
+
         with (
             patch("services.llm.settings") as mock_settings,
             patch("services.llm._get_llm") as mock_get,
@@ -116,7 +123,7 @@ class TestCallLlmProviderDefault:
             mock_settings.default_llm_provider = "qwen"
             mock_get.return_value = None
             call_llm("sys", "user", mock_response={})
-            mock_get.assert_called_once_with("qwen")
+            mock_get.assert_called_once_with("qwen", STRUCTURED_TEMPERATURE)
 
 
 # ---------------------------------------------------------------------------

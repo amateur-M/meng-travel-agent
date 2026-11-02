@@ -15,18 +15,10 @@ import type {
   WeatherSwap,
   WeatherSwapEvent,
 } from "../types/trip";
-import { postEventStream, getEventStream } from "./sse";
+import { getEventStream } from "./sse";
 import { api, ApiError } from "./api";
 
 export interface PlanStreamOptions {
-  onStep?: (event: PlanStepEvent) => void;
-  onPartial?: (payload: PartialEvent) => void;
-  onBudgetAlert?: (payload: BudgetAlertEvent) => void;
-  onWeatherSwap?: (payload: WeatherSwapEvent) => void;
-  onMessage?: (payload: MessageEvent) => void;
-}
-
-interface CreatePlanOptions {
   onStep?: (event: PlanStepEvent) => void;
   onPartial?: (payload: PartialEvent) => void;
   onBudgetAlert?: (payload: BudgetAlertEvent) => void;
@@ -297,37 +289,6 @@ function readErrorMessage(payload: unknown): string {
   const error = asRecord(payload);
   const message = error.message ?? error.detail;
   return asString(message, "行程生成失败，请稍后重试");
-}
-
-/**
- * 提交行程规划请求，解析后端 POST /api/plan 的 SSE 流并返回真实行程结果。
- */
-export async function createPlan(
-  request: TripPlanRequest,
-  options: CreatePlanOptions = {},
-): Promise<TripPlanResponse> {
-  let plan: TripPlanResponse | null = null;
-
-  await postEventStream("/api/plan", {
-    body: request,
-    onStep: options.onStep,
-    onPartial: options.onPartial,
-    onBudgetAlert: options.onBudgetAlert,
-    onWeatherSwap: options.onWeatherSwap,
-    onMessage: options.onMessage,
-    onComplete: (payload) => {
-      plan = normalizePlan(payload, request);
-    },
-    onError: (payload) => {
-      throw new Error(readErrorMessage(payload));
-    },
-  });
-
-  if (!plan) {
-    throw new Error("未收到完整行程结果");
-  }
-
-  return plan;
 }
 
 /**

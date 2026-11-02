@@ -28,11 +28,18 @@ logger = logging.getLogger("coupletrip")
 MAX_HISTORY_CONTENT_CHARS = 2000
 MAX_HISTORY_TOTAL_CHARS = 8000
 
+# P1-9: temperature policy. Structured calls (intent/slot extraction, JSON
+# contracts) must be as deterministic as possible — a wandering temperature
+# makes the same input yield different slots, which breaks turn idempotency on
+# regenerate. Free-form replies keep a warmer temperature for natural tone.
+STRUCTURED_TEMPERATURE = 0.1
+CREATIVE_TEMPERATURE = 0.7
+
 # ---------------------------------------------------------------------------
 # Per-provider client cache
 # ---------------------------------------------------------------------------
 
-_llm_cache: dict[str, Optional[ChatOpenAI]] = {}
+_llm_cache: dict[tuple[str, float], Optional[ChatOpenAI]] = {}
 
 _PROVIDER_CONFIG = {
     "openai": {
@@ -61,30 +68,33 @@ _PROVIDER_CONFIG = {
 }
 
 
-def _get_llm(provider: str = "openai") -> Optional[ChatOpenAI]:
-    """Lazy-init the ChatOpenAI client for *provider*.
+def _get_llm(provider: str = "openai", temperature: float = CREATIVE_TEMPERATURE) -> Optional[ChatOpenAI]:
+    """Lazy-init the ChatOpenAI client for *provider* at *temperature*.
 
     Returns None when the provider's API key is not configured, so
-    callers can fall back to their mock response.
+    callers can fall back to their mock response. Clients are cached per
+    (provider, temperature) so structured and creative calls reuse distinct
+    instances without re-building on every request.
     """
-    if provider in _llm_cache:
-        return _llm_cache[provider]
+    cache_key = (provider, temperature)
+    if cache_key in _llm_cache:
+        return _llm_cache[cache_key]
 
     cfg = _PROVIDER_CONFIG.get(provider)
     if cfg is None:
-        _llm_cache[provider] = None
+        _llm_cache[cache_key] = None
         return None
 
     api_key = getattr(settings, cfg["api_key_attr"], "")
     if not api_key:
-        _llm_cache[provider] = None
+        _llm_cache[cache_key] = None
         return None
 
     model = getattr(settings, cfg["model_attr"], "gpt-4o")
     kwargs: dict = {
         "model": model,
         "api_key": api_key,
-        "temperature": 0.7,
+        "temperature": temperature,
         "max_tokens": 4096,
         # Tidy/上线前: prevent upstream hangs from blocking the whole request
         "request_timeout": 60,
@@ -95,7 +105,7 @@ def _get_llm(provider: str = "openai") -> Optional[ChatOpenAI]:
         kwargs["base_url"] = getattr(settings, base_url_attr, "")
 
     client = ChatOpenAI(**kwargs)
-    _llm_cache[provider] = client
+    _llm_cache[cache_key] = client
     return client
 
 
@@ -209,7 +219,7 @@ def call_llm(
         A dict parsed from the LLM's JSON response, or *mock_response*.
     """
     provider = provider or settings.default_llm_provider
-    llm = _get_llm(provider)
+    llm = _get_llm(provider, STRUCTURED_TEMPERATURE)
 
     if llm is None:
         return mock_response or {"error": f"API key not configured for provider '{provider}'"}
@@ -248,7 +258,7 @@ async def acall_llm(
     synchronously (no I/O needed) so the event loop is not blocked.
     """
     provider = provider or settings.default_llm_provider
-    llm = _get_llm(provider)
+    llm = _get_llm(provider, STRUCTURED_TEMPERATURE)
 
     if llm is None:
         return mock_response or {"error": f"API key not configured for provider '{provider}'"}

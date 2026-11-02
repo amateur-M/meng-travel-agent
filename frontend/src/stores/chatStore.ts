@@ -375,6 +375,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   send: async (message, options = {}) => {
+    // P3-15: ignore a second submit while one is already in flight. A double
+    // click / Enter mash would otherwise fire two identical requests, and the
+    // server-side turn idempotency only covers duplicates that share a
+    // message_id — a fresh id from a second newMessageId() would not dedup.
+    if (get().status === "sending") {
+      return null;
+    }
+
     const appendUserMessage = options.appendUserMessage !== false;
     const messageId = options.messageId ?? newMessageId();
 
@@ -399,7 +407,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       writeString(browserLocalStorage(), KEY_LAST, reply.session_id);
 
       set((state) => ({
-        messages: [...state.messages, { role: "assistant", content: reply.reply }],
+        messages: [
+          ...state.messages,
+          {
+            role: "assistant",
+            content: reply.reply,
+            // P3-16: mirror the server's reply key so the assistant bubble is
+            // addressable/dedupable like every other turn.
+            messageId: `${messageId}:reply`,
+          },
+        ],
         sessionId: reply.session_id,
         hydratedSessionId: reply.session_id,
         slots: reply.slots,

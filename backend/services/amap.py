@@ -68,12 +68,15 @@ def search_pois(city: str, types: str, offset: int = 20) -> list[dict]:
             timeout=15.0,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        # P2-14: raise API-level failures *inside* the resilient call so a
+        # persistently failing key/quota trips the circuit breaker instead of
+        # silently bypassing it (only network errors were covered before).
+        if data.get("status") != "1":
+            raise RuntimeError(f"高德地点搜索失败: {data.get('info') or '未知错误'}")
+        return data
 
     data = resilient_call("amap", _do_get)
-    if data.get("status") != "1":
-        raise RuntimeError(f"高德地点搜索失败: {data.get('info') or '未知错误'}")
-
     return data.get("pois") or []
 
 
@@ -93,11 +96,13 @@ def driving_route(origin: str, destination: str) -> dict:
             timeout=15.0,
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+        # P2-14: business-level failures must trip the breaker too.
+        if data.get("status") != "1":
+            raise RuntimeError(f"高德路线规划失败: {data.get('info') or '未知错误'}")
+        return data
 
     data = resilient_call("amap", _do_get)
-    if data.get("status") != "1":
-        raise RuntimeError(f"高德路线规划失败: {data.get('info') or '未知错误'}")
 
     paths = (data.get("route") or {}).get("paths") or []
     if not paths:

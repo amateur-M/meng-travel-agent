@@ -8,13 +8,14 @@ factory so Amap and QWeather calls get uniform resilience behaviour:
 
 import time
 import logging
+import threading
 from typing import Any, Callable, TypeVar
 
 from tenacity import (
     retry,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
+    retry_if_not_exception_type,
     RetryError,
 )
 
@@ -41,29 +42,35 @@ class CircuitBreaker:
         self.recovery_timeout = recovery_timeout
         self._failures = 0
         self._opened_at: float | None = None
+        # P2-13: resilient_call is synchronous and runs under asyncio.to_thread,
+        # so multiple threads mutate the counters concurrently. Guard them.
+        self._lock = threading.Lock()
 
     @property
     def is_open(self) -> bool:
-        if self._opened_at is None:
-            return False
-        if time.monotonic() - self._opened_at >= self.recovery_timeout:
-            # Transition to half-open: allow a probe call
-            return False
-        return True
+        with self._lock:
+            if self._opened_at is None:
+                return False
+            if time.monotonic() - self._opened_at >= self.recovery_timeout:
+                # Transition to half-open: allow a probe call
+                return False
+            return True
 
     def record_success(self) -> None:
-        self._failures = 0
-        self._opened_at = None
+        with self._lock:
+            self._failures = 0
+            self._opened_at = None
 
     def record_failure(self) -> None:
-        self._failures += 1
-        if self._failures >= self.failure_threshold:
-            self._opened_at = time.monotonic()
-            logger.warning(
-                "CircuitBreaker[%s] opened after %d consecutive failures",
-                self.name,
-                self._failures,
-            )
+        with self._lock:
+            self._failures += 1
+            if self._failures >= self.failure_threshold:
+                self._opened_at = time.monotonic()
+                logger.warning(
+                    "CircuitBreaker[%s] opened after %d consecutive failures",
+                    self.name,
+                    self._failures,
+                )
 
     def call(self, fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
         """Execute *fn* through the breaker, short-circuiting when open."""
@@ -98,16 +105,19 @@ def resilient_call(
 ) -> T:
     """Call *fn* with tenacity retry + circuit breaker.
 
-    Retries on httpx.HTTPError and RuntimeError (Amap/QWeather raise
-    RuntimeError on API-level failures). The circuit breaker short-
-    circuits if the service has been consistently failing.
+    Retries transient errors with exponential backoff. P1-4: an open circuit
+    breaker (``CircuitBreakerOpen``) is explicitly *excluded* from retry so it
+    short-circuits immediately instead of burning attempts + backoff sleeps —
+    previously ``retry_if_exception_type((Exception,))`` retried the breaker
+    too, blocking the calling thread for ~3s on every call while the service
+    was known-down.
     """
     breaker = get_breaker(breaker_name)
 
     @retry(
         stop=stop_after_attempt(max_attempts),
         wait=wait_exponential(multiplier=1, min=1, max=8),
-        retry=retry_if_exception_type((Exception,)),
+        retry=retry_if_not_exception_type(CircuitBreakerOpen),
         reraise=True,
     )
     def _attempt():

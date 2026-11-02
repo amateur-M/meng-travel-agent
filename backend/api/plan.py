@@ -55,9 +55,22 @@ async def create_plan(request: Request, body: TripPlanRequest, _: None = Depends
     # Drop the session link from the stored request body: it is conversation
     # bookkeeping, not part of the trip itself.
     request_dict.pop("session_id", None)
+
+    # P0-3: resolve the owning client so this plan is scoped to its user for
+    # L3 recall / history instead of being globally visible. The owner lives on
+    # the session, so look it up before persisting.
+    client_id: str | None = None
+    if body.session_id:
+        session = await conversation_store.get_session(body.session_id)
+        client_id = (session or {}).get("client_id")
+
     # Offload: plan_store uses a sync pool, so calling it here would freeze the
     # event loop (and every other request) for the duration of the write.
-    await asyncio.to_thread(plan_store.save, plan_id, request_dict, status="processing")
+    await asyncio.to_thread(
+        lambda: plan_store.save(
+            plan_id, request_dict, status="processing", client_id=client_id
+        )
+    )
 
     # V3/P1: remember on the session which trip it produced, so the sidebar can
     # offer "查看行程" after a refresh.
@@ -131,10 +144,12 @@ async def stream_plan(plan_id: str, _: None = Depends(verify_api_key)):
                     break
                 yield event
         except asyncio.CancelledError:
+            # P0-1: a client disconnecting mid-flight must NOT tear down the
+            # bus — the graph is still running and the client is expected to
+            # reconnect to this same URL. Cleanup is owned solely by the
+            # background task (_run_graph_to_queue), which removes the entry
+            # once the stream has fully terminated and the result is persisted.
             pass
-        finally:
-            # Clean up the queue when the last consumer disconnects
-            plan_streams.pop(plan_id, None)
 
     return StreamingResponse(_live_stream(), media_type="text/event-stream", headers=_SSE_HEADERS)
 
