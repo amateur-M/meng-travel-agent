@@ -2,28 +2,73 @@
 @tailwind components;
 @tailwind utilities;
 
-/* V4/T3.5: a few semantic classes for the patterns that were copy-pasted
-   across a dozen components, so "card", "text input" and "primary button"
-   mean one thing each. Padding/size stay at the call site as utilities
-   (which still override, since @layer components sits below utilities). */
+/* V6/T0.3: the component layer is the *only* place shared visual decisions are
+   written down. Before this, "card" meant six slightly different class strings,
+   "primary button" had three variants, and focus rings were whatever the browser
+   did. Each class below is a contract: pages compose these and only pass
+   padding/size utilities (which win, since @layer components sits under
+   utilities). */
 @layer components {
   .ct-card {
-    @apply rounded-lg border border-cream-200 bg-surface shadow-soft;
+    @apply rounded-2xl border border-cream-200 bg-surface shadow-soft;
   }
+
+  /* A card nested inside another card or a tinted well — no shadow, softer line,
+     so depth reads as two levels instead of everything floating equally. */
+  .ct-card-flat {
+    @apply rounded-xl border border-cream-200 bg-cream-50/60;
+  }
+
   .ct-input {
-    @apply rounded-lg border border-cream-200 bg-surface text-ink-900 outline-none transition focus:border-blush-400 focus:ring-2 focus:ring-blush-100;
+    @apply rounded-xl border border-cream-200 bg-surface text-ink-900 outline-none transition
+           placeholder:text-ink-300
+           focus:border-blush-400 focus:ring-2 focus:ring-blush-100;
   }
+
   .ct-btn-primary {
-    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white transition hover:bg-brand-dark disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-2 rounded-xl bg-brand font-semibold text-white
+           shadow-soft transition hover:bg-brand-dark active:scale-[0.99]
+           disabled:cursor-not-allowed disabled:opacity-50 disabled:active:scale-100;
+  }
+
+  /* Secondary: bordered, surface-filled. The default for "an action next to the
+     primary one" (查看完整行程, 展开/收起, 重试). */
+  .ct-btn-outline {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl border border-cream-200 bg-surface
+           font-medium text-ink-600 transition hover:border-cream-300 hover:text-ink-900
+           disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* Tertiary: text-only, for row-level actions (rename, delete, thumbs). */
+  .ct-btn-quiet {
+    @apply inline-flex items-center justify-center gap-1 rounded-lg text-ink-400 transition
+           hover:bg-cream-100 hover:text-ink-700 disabled:cursor-default disabled:hover:bg-transparent;
+  }
+
+  /* Round icon button used in headers and toolbars. */
+  .ct-btn-icon {
+    @apply inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cream-200
+           bg-surface text-ink-500 transition hover:border-cream-300 hover:text-ink-900;
+  }
+
+  /* Tinted pill for slot chips, weather notes, counts. */
+  .ct-chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs;
+  }
+
+  /* Text well for assistant replies and any long-form block. */
+  .ct-well {
+    @apply rounded-xl bg-cream-50 px-3 py-2 text-sm leading-6 text-ink-600;
   }
 }
 
-/* V4/T2.5: the whole palette is expressed as space-separated RGB triplets so
-   Tailwind can apply an alpha (bg-surface/70). Light values match the original
-   hexes exactly; the dark block re-assigns the same names. Surfaces/borders and
-   text flip; the accent ramp inverts (dark text in light mode -> light text in
-   dark mode) so it stays readable on the flipped tints. Solid CTAs use the
-   fixed `brand` color in tailwind.config.ts and are deliberately not here. */
+/* V4/T2.5 + V6/T0.1: the whole palette is expressed as space-separated RGB
+   triplets so Tailwind can apply an alpha (bg-surface/70). Light values match
+   the original hexes exactly; the dark block re-assigns the same names.
+   Surfaces/borders and text flip; the accent ramp inverts (dark text in light
+   mode -> light text in dark mode) so it stays readable on the flipped tints.
+   Solid CTAs use the fixed `brand` color in tailwind.config.ts and are
+   deliberately not here. */
 :root {
   color-scheme: light;
 
@@ -61,6 +106,40 @@
   --gold-400: 199 148 60;
   --gold-500: 169 116 45;
   --gold-600: 130 85 34;
+
+  /* shadow base — warm near-black, tinted to match the cream page */
+  --shadow: 78 47 55;
+
+  /* ── V6/T0.1 categorical tones ─────────────────────────────────────
+     Three roles per hue: soft (panel), strong (text/icon on it), line (border).
+     Light values are the Tailwind 50/700/200 steps of each hue. */
+  --tone-sky-soft: 240 249 255;
+  --tone-sky-strong: 3 105 161;
+  --tone-sky-line: 186 230 253;
+
+  --tone-violet-soft: 245 243 255;
+  --tone-violet-strong: 109 40 217;
+  --tone-violet-line: 221 214 254;
+
+  --tone-indigo-soft: 238 242 255;
+  --tone-indigo-strong: 67 56 202;
+  --tone-indigo-line: 199 210 254;
+
+  --tone-emerald-soft: 236 253 245;
+  --tone-emerald-strong: 4 120 87;
+  --tone-emerald-line: 167 243 208;
+
+  --tone-amber-soft: 255 251 235;
+  --tone-amber-strong: 146 64 14;
+  --tone-amber-line: 253 230 138;
+
+  --tone-orange-soft: 255 247 237;
+  --tone-orange-strong: 194 65 12;
+  --tone-orange-line: 254 215 170;
+
+  --tone-rose-soft: 255 241 242;
+  --tone-rose-strong: 190 18 60;
+  --tone-rose-line: 254 205 211;
 }
 
 :root[data-theme="dark"] {
@@ -96,6 +175,40 @@
   --gold-400: 211 165 89;
   --gold-500: 224 187 119;
   --gold-600: 236 210 163;
+
+  /* On a dark surface a warm shadow vanishes; go pure black and heavier. */
+  --shadow: 0 0 0;
+
+  /* Categorical tones invert the same way: the panel becomes a deep tint of the
+     hue, the text becomes a light tint of it. Saturation is pulled back so a
+     status panel reads as a quiet signal, not a neon block. */
+  --tone-sky-soft: 18 33 45;
+  --tone-sky-strong: 130 196 240;
+  --tone-sky-line: 42 72 96;
+
+  --tone-violet-soft: 33 26 51;
+  --tone-violet-strong: 186 164 250;
+  --tone-violet-line: 68 54 104;
+
+  --tone-indigo-soft: 27 30 58;
+  --tone-indigo-strong: 172 178 250;
+  --tone-indigo-line: 57 63 112;
+
+  --tone-emerald-soft: 16 39 33;
+  --tone-emerald-strong: 118 216 178;
+  --tone-emerald-line: 38 78 64;
+
+  --tone-amber-soft: 45 35 17;
+  --tone-amber-strong: 238 196 118;
+  --tone-amber-line: 86 66 32;
+
+  --tone-orange-soft: 47 30 19;
+  --tone-orange-strong: 244 168 118;
+  --tone-orange-line: 90 58 36;
+
+  --tone-rose-soft: 49 23 29;
+  --tone-rose-strong: 248 154 168;
+  --tone-rose-line: 97 46 60;
 }
 
 * {
@@ -134,9 +247,58 @@ button {
   cursor: pointer;
 }
 
+/* V6/T3.2: one focus ring for the whole app. `:focus-visible` (not `:focus`)
+   keeps the ring off mouse clicks, and it is drawn from the accent ramp so it
+   survives the dark-mode flip. Every interactive element used to fall back to
+   the UA default, which is invisible against blush tints. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--blush-400));
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
 ::selection {
-  background: #f9c2d1;
-  color: #30252a;
+  background: rgb(var(--blush-200));
+  color: rgb(var(--ink-900));
+}
+
+/* Thin, theme-aware scrollbar for the message flow, sidebar and expanded
+   itinerary. The default 15px grey bar was the loudest thing on the page. */
+.ct-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--cream-300)) transparent;
+}
+
+.ct-scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.ct-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ct-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgb(var(--cream-300));
+}
+
+.ct-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(var(--cream-300) / 0.8);
+}
+
+/* V6/T1.2: theme switches animate the surfaces, but only for the duration of
+   the switch — a permanent `* { transition }` would also lag every hover. */
+:root.theme-switching,
+:root.theme-switching *,
+:root.theme-switching *::before,
+:root.theme-switching *::after {
+  transition:
+    background-color 220ms ease,
+    border-color 220ms ease,
+    color 220ms ease,
+    fill 220ms ease,
+    stroke 220ms ease !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

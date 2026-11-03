@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { AlertTriangle, CircleCheck, WalletCards } from "lucide-react";
+import { TONE } from "../../config/tones";
 
 interface BudgetBarProps {
   totalBudget: number;
@@ -9,6 +10,10 @@ interface BudgetBarProps {
 
 /**
  * 预算进度条，实时累计已花费预算，超过总预算时切换为红色告警。
+ *
+ * V6/T1.4: the bar fill used three hardcoded hexes, which stayed bright green /
+ * gold / red on a dark page. It now uses the tone ramp, so the fill and its
+ * label share one theme-aware colour.
  */
 export function BudgetBar({
   totalBudget,
@@ -20,14 +25,11 @@ export function BudgetBar({
     Math.round((totalSpent / Math.max(totalBudget, 1)) * 100),
   );
 
-  const barColor = overBudget
-    ? "#e05a68"
-    : percentage >= 90
-      ? "#ddb866"
-      : "#6fbf8d";
+  const isWarning = percentage >= 90 && !overBudget;
+  const tone = overBudget ? TONE.rose : isWarning ? TONE.amber : TONE.emerald;
   const statusLabel = overBudget
     ? "已超预算"
-    : percentage >= 90
+    : isWarning
       ? "接近预算上限"
       : "预算内";
 
@@ -46,41 +48,22 @@ export function BudgetBar({
 
       <div className="h-2 overflow-hidden rounded-full bg-cream-200">
         <motion.div
-          className="h-full rounded-full"
+          className={`h-full rounded-full ${tone.fill}`}
           initial={{ width: 0 }}
           animate={{ width: `${percentage}%` }}
           transition={{ duration: 0.7, ease: "easeOut" }}
-          style={{ backgroundColor: barColor }}
         />
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3 text-xs">
-        <span className="text-ink-400">{percentage}%</span>
-        <span
-          className={`inline-flex items-center gap-1.5 font-medium ${
-            overBudget
-              ? "text-rose-600"
-              : percentage >= 90
-                ? "text-amber-600"
-                : "text-emerald-600"
-          }`}
-        >
-          {overBudget ? (
-            <>
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {statusLabel}
-            </>
-          ) : percentage >= 90 ? (
-            <>
-              <AlertTriangle className="h-3.5 w-3.5" />
-              {statusLabel}
-            </>
+        <span className="tabular-nums text-ink-400">{percentage}%</span>
+        <span className={`inline-flex items-center gap-1.5 font-medium ${tone.strong}`}>
+          {overBudget || isWarning ? (
+            <AlertTriangle className="h-3.5 w-3.5" />
           ) : (
-            <>
-              <CircleCheck className="h-3.5 w-3.5" />
-              {statusLabel}
-            </>
+            <CircleCheck className="h-3.5 w-3.5" />
           )}
+          {statusLabel}
         </span>
       </div>
     </div>

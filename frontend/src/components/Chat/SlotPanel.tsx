@@ -1,12 +1,14 @@
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   CalendarDays,
-  MapPin,
-  WalletCards,
-  Heart,
+  ChevronDown,
   Clock,
+  Heart,
+  MapPin,
   Sparkles,
+  WalletCards,
 } from "lucide-react";
+import { useState } from "react";
 import type { Slots } from "../../types/chat";
 
 interface SlotPanelProps {
@@ -26,19 +28,41 @@ const SLOT_CONFIG: {
   { key: "pace", label: "节奏", icon: Clock },
 ];
 
+/**
+ * Collected-slot summary (V6/T2.5).
+ *
+ * It used to be a bordered card with a title row, which made the composer a
+ * three-storey stack (status / slot card / input). Slots are now a single
+ * wrapping chip row prefixed by the label — one line of context, collapsible
+ * when a trip already exists and the noise is not wanted.
+ */
 export function SlotPanel({ slots }: SlotPanelProps) {
+  const [collapsed, setCollapsed] = useState(false);
   const filled = SLOT_CONFIG.filter((s) => slots[s.key]);
   const prefs = slots.preferences ?? [];
+  const empty = filled.length === 0 && prefs.length === 0;
+
+  if (empty) {
+    return null;
+  }
 
   return (
-    <div className="ct-card p-4">
-      <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-ink-400">
-        <Sparkles className="h-3.5 w-3.5 text-gold-400" />
-        已收集信息
-      </p>
+    <div className="flex flex-wrap items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => setCollapsed((value) => !value)}
+        aria-expanded={!collapsed}
+        className="ct-btn-quiet h-6 gap-1 px-1.5 text-[11px] font-medium text-ink-400"
+      >
+        <Sparkles className="h-3 w-3 text-gold-400" />
+        已收集 {filled.length + (prefs.length ? 1 : 0)} 项
+        <ChevronDown
+          className={`h-3 w-3 transition-transform ${collapsed ? "" : "rotate-180"}`}
+        />
+      </button>
 
-      <div className="flex flex-wrap gap-2">
-        <AnimatePresence>
+      {!collapsed && (
+        <AnimatePresence initial={false}>
           {filled.map((slot) => {
             const val = slots[slot.key];
             const display =
@@ -49,35 +73,35 @@ export function SlotPanel({ slots }: SlotPanelProps) {
             return (
               <motion.span
                 key={slot.key}
-                className="inline-flex items-center gap-1 rounded-full bg-cream-50 px-2.5 py-1 text-xs text-ink-600"
-                initial={{ opacity: 0, scale: 0.8 }}
+                layout
+                className="ct-chip border border-cream-200 bg-cream-50 text-ink-600"
+                initial={{ opacity: 0, scale: 0.92 }}
                 animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.8 }}
-                transition={{ duration: 0.2 }}
+                exit={{ opacity: 0, scale: 0.92, transition: { duration: 0.12 } }}
+                transition={{ duration: 0.18 }}
               >
                 <slot.icon className="h-3 w-3 text-blush-400" />
-                {slot.label}: {display}
+                <span className="text-ink-400">{slot.label}</span>
+                <span className="font-medium text-ink-700">{display}</span>
               </motion.span>
             );
           })}
 
           {prefs.length > 0 && (
             <motion.span
-              className="inline-flex items-center gap-1 rounded-full bg-blush-50 px-2.5 py-1 text-xs text-blush-600"
-              initial={{ opacity: 0, scale: 0.8 }}
+              key="prefs"
+              layout
+              className="ct-chip border border-blush-200 bg-blush-50 text-blush-600"
+              initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.2 }}
+              transition={{ duration: 0.18 }}
             >
               <Heart className="h-3 w-3" />
               {prefs.join("、")}
             </motion.span>
           )}
         </AnimatePresence>
-
-        {filled.length === 0 && prefs.length === 0 && (
-          <span className="text-xs text-ink-300">还没有收集到信息</span>
-        )}
-      </div>
+      )}
     </div>
   );
 }

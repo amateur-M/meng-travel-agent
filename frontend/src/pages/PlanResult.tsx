@@ -1,12 +1,6 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import {
-  ArrowLeft,
-  CalendarDays,
-  MapPin,
-  Sparkles,
-  WalletCards,
-} from "lucide-react";
+import { ArrowLeft, CalendarDays, MapPin, Sparkles, WalletCards } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
 import { BudgetAlerts } from "../components/BudgetAlerts/BudgetAlerts";
@@ -14,9 +8,14 @@ import { BudgetBar } from "../components/BudgetBar/BudgetBar";
 import { CoupleQuote } from "../components/CoupleQuote/CoupleQuote";
 import { Timeline } from "../components/Timeline/Timeline";
 import { useTripStore } from "../stores/tripStore";
+import { CONTENT_WIDTH } from "../config/layout";
 
 /**
  * 行程展示页，以可折叠时间轴呈现每日活动，并汇总预算与情侣寄语。
+ *
+ * V6/T2.8: the back control said "重新规划" while actually returning to the
+ * conversation — a label promising to throw the trip away. It now says "返回对话"
+ * and the itinerary stays on screen at "/" anyway.
  */
 export function PlanResult() {
   const navigate = useNavigate();
@@ -46,8 +45,11 @@ export function PlanResult() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-50 text-ink-500">
-        <p className="text-sm">正在恢复行程...</p>
+      <div className="flex min-h-dvh items-center justify-center bg-cream-50 text-ink-500">
+        <div className="flex items-center gap-2.5">
+          <span className="h-4 w-4 animate-spin rounded-full border-2 border-blush-300 border-t-blush-600" />
+          <p className="text-sm">正在恢复行程...</p>
+        </div>
       </div>
     );
   }
@@ -63,24 +65,24 @@ export function PlanResult() {
   );
 
   return (
-    <div className="min-h-screen bg-cream-50 text-ink-900">
+    <div className="min-h-dvh bg-cream-50 text-ink-900">
       <AppHeader
         sticky
         leading={
           <button
             type="button"
-            className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-ink-500 transition hover:bg-cream-100 hover:text-ink-900"
+            className="ct-btn-quiet h-9 px-2.5 text-sm"
             onClick={() => navigate("/")}
           >
             <ArrowLeft className="h-4 w-4" />
-            重新规划
+            返回对话
           </button>
         }
       />
 
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
+      <main className={`mx-auto ${CONTENT_WIDTH.page} px-4 py-5 sm:px-6 sm:py-8`}>
         <motion.section
-          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-brand to-brand-dark p-6 text-white shadow-lift sm:p-8"
+          className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand to-brand-dark p-6 text-white shadow-lift sm:p-8"
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}

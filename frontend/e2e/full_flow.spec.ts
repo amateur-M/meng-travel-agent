@@ -111,17 +111,17 @@ test.describe("表单页", () => {
     await expect(page.getByText("天行程").first()).toBeVisible();
     // 预算展示
     await expect(page.getByText(/¥.*\/.*¥.*/).first()).toBeVisible();
-    // 重新规划按钮
-    await expect(page.getByRole("button", { name: "重新规划" })).toBeVisible();
+    // 返回对话入口（V6/T2.8：原"重新规划"文案有误导，实际只是返回对话）
+    await expect(page.getByRole("button", { name: "返回对话" })).toBeVisible();
   });
 
-  test("结果页支持重新规划返回首页", async ({ page }) => {
+  test("结果页可返回对话页", async ({ page }) => {
     await page.goto("/form");
     await page.getByRole("button", { name: "生成行程" }).first().click();
     await page.waitForURL(/\/result/, { timeout: 60_000 });
 
-    await page.getByRole("button", { name: "重新规划" }).click();
-    // / 现在是对话页，仍是"首页"
+    await page.getByRole("button", { name: "返回对话" }).click();
+    // / 是对话页，也是产品的主入口
     await expect(page).toHaveURL("/");
   });
 

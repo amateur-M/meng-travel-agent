@@ -9,40 +9,50 @@ import {
   Utensils,
   type LucideIcon,
 } from "lucide-react";
+import { TONE, TONE_GRADIENT, type Tone } from "../../config/tones";
 import type { ActivityType } from "../../types/trip";
 
 /**
- * Per-type themed placeholder (V4/T3.2).
+ * Per-type themed placeholder (V4/T3.2, re-toned in V6/T1.4).
  *
  * Live POI photos only exist when Amap returns them; curated/offline plans have
  * none. Rather than a broken <img> or an empty grey box, an activity without a
  * photo gets a soft gradient banner keyed to its type with a large icon, so the
  * itinerary still reads as a visual, destination-flavoured card.
+ *
+ * The gradients now come from the tone tokens, so they invert with the theme
+ * instead of staying pale pastel on a dark page. Both photo and placeholder use
+ * the same 4:3 box, so a failed image does not jump the card's height.
  */
-const PLACEHOLDER: Record<ActivityType, { Icon: LucideIcon; gradient: string; iconClass: string }> = {
-  景点: { Icon: Landmark, gradient: "from-sky-100 to-indigo-100", iconClass: "text-sky-500" },
-  美食: { Icon: Utensils, gradient: "from-amber-100 to-orange-100", iconClass: "text-amber-500" },
-  室内: { Icon: House, gradient: "from-violet-100 to-fuchsia-100", iconClass: "text-violet-500" },
-  户外: { Icon: TreePine, gradient: "from-emerald-100 to-teal-100", iconClass: "text-emerald-500" },
-  文化: { Icon: Palette, gradient: "from-indigo-100 to-blue-100", iconClass: "text-indigo-500" },
-  冒险: { Icon: Mountain, gradient: "from-rose-100 to-pink-100", iconClass: "text-rose-500" },
-  留白: { Icon: Coffee, gradient: "from-cream-100 to-cream-200", iconClass: "text-ink-400" },
+const TYPE_TONE: Record<ActivityType, { Icon: LucideIcon; tone: Tone }> = {
+  景点: { Icon: Landmark, tone: "sky" },
+  美食: { Icon: Utensils, tone: "orange" },
+  室内: { Icon: House, tone: "violet" },
+  户外: { Icon: TreePine, tone: "emerald" },
+  文化: { Icon: Palette, tone: "indigo" },
+  冒险: { Icon: Mountain, tone: "rose" },
+  留白: { Icon: Coffee, tone: "amber" },
 };
 
 interface ActivityImageProps {
   name: string;
   type: ActivityType;
   imageUrl?: string | null;
+  /** Compact boxes for the collapsed/inline itinerary. */
+  compact?: boolean;
 }
 
-export function ActivityImage({ name, type, imageUrl }: ActivityImageProps) {
-  const meta = PLACEHOLDER[type] ?? PLACEHOLDER.留白;
+export function ActivityImage({ name, type, imageUrl, compact = false }: ActivityImageProps) {
+  const meta = TYPE_TONE[type] ?? TYPE_TONE.留白;
   const [failed, setFailed] = useState(false);
   const showPhoto = Boolean(imageUrl) && !failed;
 
+  const box = compact ? "h-24" : "h-40";
+  const base = `relative mb-3 w-full overflow-hidden rounded-xl ${box}`;
+
   if (showPhoto) {
     return (
-      <div className="relative mb-3 h-36 w-full overflow-hidden rounded-lg bg-cream-100">
+      <div className={`${base} bg-cream-100`}>
         <img
           src={imageUrl as string}
           alt={name}
@@ -50,17 +60,23 @@ export function ActivityImage({ name, type, imageUrl }: ActivityImageProps) {
           onError={() => setFailed(true)}
           className="h-full w-full object-cover"
         />
+        {/* A faint bottom scrim so the badge-ish text above stays readable on
+            bright photos without dimming the whole image. */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-black/25 to-transparent"
+        />
       </div>
     );
   }
 
-  const { Icon, gradient, iconClass } = meta;
+  const { Icon, tone } = meta;
   return (
     <div
-      className={`relative mb-3 flex h-24 w-full items-center justify-center overflow-hidden rounded-lg bg-gradient-to-br ${gradient}`}
+      className={`${base} flex items-center justify-center bg-gradient-to-br ${TONE_GRADIENT[tone]}`}
       aria-hidden="true"
     >
-      <Icon className={`h-10 w-10 opacity-70 ${iconClass}`} />
+      <Icon className={`${compact ? "h-8 w-8" : "h-11 w-11"} opacity-60 ${TONE[tone].strong}`} />
     </div>
   );
 }

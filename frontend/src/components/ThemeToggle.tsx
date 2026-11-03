@@ -1,28 +1,37 @@
-import { Moon, Sun } from "lucide-react";
-import { useUIStore } from "../stores/uiStore";
+import { Monitor, Moon, Sun } from "lucide-react";
+import { useUIStore, type ThemePreference } from "../stores/uiStore";
+
+const LABEL: Record<ThemePreference, string> = {
+  light: "浅色模式（点击：深色）",
+  dark: "深色模式（点击：跟随系统）",
+  system: "跟随系统（点击：浅色）",
+};
 
 /**
- * The dark-mode switch (V4/T2.6).
+ * The dark-mode switch (V4/T2.6, reworked in V6/T1.1).
  *
- * The theme was already wired through uiStore → `document.documentElement.dataset.theme`
- * → the CSS variables in index.css, but nothing in the UI ever called `setTheme`,
- * so the dark palette was unreachable. This button lives in the shared header and
- * flips between the two themes.
+ * V4 fixed the "theme is wired but unreachable" bug by adding this button, but a
+ * two-state toggle forces a permanent override: once you tap it, the app can
+ * never follow the OS again without clearing storage. It now cycles
+ * light → dark → system, so "follow the system" stays reachable, and the icon
+ * shows which state you are actually in rather than only the current paint.
  */
 export function ThemeToggle() {
-  const theme = useUIStore((state) => state.theme);
-  const setTheme = useUIStore((state) => state.setTheme);
-  const isDark = theme === "dark";
+  const preference = useUIStore((state) => state.preference);
+  const cycleTheme = useUIStore((state) => state.cycleTheme);
+
+  const Icon =
+    preference === "system" ? Monitor : preference === "dark" ? Sun : Moon;
 
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
-      aria-label={isDark ? "切换到浅色模式" : "切换到深色模式"}
-      title={isDark ? "浅色模式" : "深色模式"}
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cream-200 bg-surface text-ink-500 transition hover:text-ink-900"
+      onClick={cycleTheme}
+      aria-label={LABEL[preference]}
+      title={LABEL[preference]}
+      className="ct-btn-icon"
     >
-      {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+      <Icon className="h-4 w-4" />
     </button>
   );
 }

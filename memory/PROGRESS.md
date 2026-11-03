@@ -17,6 +17,54 @@
 | V3 | Done | 2026-10-16 | 2026-10-16 | 对话记忆 L0–L3 + 会话持久化与恢复（T0.2 本地库初始化待执行） |
 | V4 | Done | 2026-10-17 | 2026-10-17 | 系统成熟度：后端分层（api/+services/）+ Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步 |
 | V5 | Done | 2026-11-02 | 2026-11-02 | 企业级健壮性审计与修复：SSE 重连/泄漏 + L3 跨租户隔离 + 熔断/幂等/连接池自愈 + 天气按日期取值 |
+| V6 | Done | 2026-11-03 | 2026-11-03 | 设计系统与交互质量：tone 令牌 + 深色模式真收口（48 处）+ 消息流/时间轴视觉改版 + a11y，零新依赖 |
+
+## V6 Completion Summary (2026-11-03)
+
+完整清单见 `UPGRADE_V6_DESIGN_SYSTEM.md`；关键取舍见 `ARCHITECTURE.md` §6.3。
+起因：用户给出资深前端工程师规范（统一设计语言、简洁现代、控制依赖、完整交互反馈），
+并确认三项范围：零新依赖、深色跟随系统+记住选择、含较大视觉改版。`package.json` 依赖零变化。
+
+**P0 令牌层**
+- `tone.*` 语义色：7 色调 × 4 角色（soft/strong/line/fill），全部字面量展开以便 Tailwind 扫描
+- `.ct-card`/`.ct-card-flat`/`.ct-input`/`.ct-btn-primary`/`.ct-btn-outline`/`.ct-btn-quiet`/`.ct-btn-icon`/`.ct-chip`/`.ct-well`/`.ct-scroll`
+- 全局 `:focus-visible` 焦点环（取自 blush 色阶，随主题翻转）；`--shadow` 也随主题翻转（暖阴影在深底上消失）
+
+**P1 深色模式真收口**
+- **48 处**原生调色板（`bg-sky-50`/`text-amber-800`/`bg-rose-50`…）迁移到 `tone` 令牌；3 处硬编码 hex 变量化
+- `uiStore.preference: light|dark|system` 持久化 + `watchSystemTheme()` 实时跟随系统
+- `index.html` 内联脚本**首帧前**写 `data-theme`，消除深色用户每次加载的白闪
+- `.theme-switching` 仅切换期启用颜色过渡（不拖慢 hover）
+- `reducedMotion` 死代码（有 setter 零消费者）改用 `<MotionConfig reducedMotion="user">`
+
+**P2 视觉改版**
+- Chat 消息流：连续助手消息共享头像、日期分隔、气泡方向尾巴、滚动锚定 + "回到最新" 药丸、打字指示点
+- Timeline：每天改无卡片外壳 section + Day 徽章用 brand 色；TimelineCard 名称/花费同行 + meta 行 chip + 配图统一 4:3 盒（消除高度跳变）
+- ChatPlanCard：hero 内发丝进度条；ChatEmptyState 三条建议各带图标 + 副标题
+
+**P3 交互与 a11y**
+- 输入框自动增高（`scrollHeight` 自适应，上限 160px）
+- 会话行内操作常驻布局（原 `opacity-0 group-hover` 使触屏/键盘不可达）
+- `h-screen` → `h-dvh`（移动端地址栏不再顶掉 composer）
+- 原生 `<dialog>` 替换 `window.confirm`（Cancel 拿初始焦点）
+- 会话骨架屏、状态条 `role=alert/status`、多处 `aria-*`、`PlanResult` "重新规划"→"返回对话"
+
+### V6 Verification
+
+- `npx tsc -b` 通过（首轮 2 个未使用 interface 报错已修）
+- `npm run build` 通过：2274 modules，CSS 44.50 kB / gzip 8.05 kB，JS 424.94 kB / gzip 138.52 kB
+- `npm run check:chat` **49/49**；`npm run check:store` **28/28**
+- 构建产物实测：**21 个 tone 类全部生成**；每个 `--tone-*`/`--shadow` 在 light/dark **各定义一次**；
+  `:root[data-theme=dark]` 的 `--surface: 45 35 40`、`--ink-900: 255 245 247`、`--shadow: 0 0 0`、
+  `--tone-sky-soft: 18 33 45` 确认翻转
+- 残留原生调色板 **0 处**、`*.tsx` 硬编码 hex **0 处**、`window.confirm`/`h-screen` **0 处**（仅注释）
+- E2E 断言同步（"重新规划" → "返回对话"）；本机无 Playwright 浏览器，仅 CI 生效
+
+### V6 Known Gaps
+
+1. **浏览器人工确认仍需执行**：深色模式下逐页过一遍（Chat / 空状态 / 展开行程 / PlanResult / Loading / `/form`），见 `DEPLOY.md` §五
+2. **E2E 本机不可运行**：Playwright 浏览器未安装（与 V3/V4/V5 同一约束）
+3. **静态地图 / OTel tracing**：历史遗留，与本轮无关
 
 ## M0 Completion Checklist
 

@@ -1,34 +1,33 @@
 import { motion, type Variants } from "framer-motion";
 import { Check, LoaderCircle, Sparkles } from "lucide-react";
+import { TONE } from "../../config/tones";
 import type { PlanningStep } from "../../types/trip";
-
-interface SSEProgressProps {
-  steps: PlanningStep[];
-}
 
 const listVariants: Variants = {
   hidden: {},
   visible: {
-    transition: { staggerChildren: 0.14 },
+    transition: { staggerChildren: 0.1 },
   },
 };
 
 const itemVariants: Variants = {
-  hidden: { opacity: 0, x: -10 },
+  hidden: { opacity: 0, x: -8 },
   visible: {
     opacity: 1,
     x: 0,
-    transition: { duration: 0.35, ease: "easeOut" },
+    transition: { duration: 0.3, ease: "easeOut" },
   },
 };
 
 /**
  * Agent 思考过程可视化，逐步展示解析、天气、地点、编排与寄语生成进度。
  */
-export function SSEProgress({ steps }: SSEProgressProps) {
+export function SSEProgress({ steps }: { steps: PlanningStep[] }) {
+  const done = TONE.emerald;
+
   return (
     <motion.ol
-      className="w-full max-w-sm space-y-3"
+      className="w-full max-w-sm space-y-2.5"
       variants={listVariants}
       initial="hidden"
       animate="visible"
@@ -40,19 +39,19 @@ export function SSEProgress({ steps }: SSEProgressProps) {
         return (
           <motion.li
             key={step.id}
-            className={`flex items-center gap-3 rounded-lg border px-4 py-3 ${
+            className={`flex items-center gap-3 rounded-xl border px-4 py-3 transition ${
               isActive
                 ? "border-blush-200 bg-surface shadow-soft"
                 : isDone
-                  ? "border-cream-200 bg-surface/70"
-                  : "border-cream-200 bg-surface/40"
+                  ? "border-cream-200 bg-surface/60"
+                  : "border-transparent bg-transparent opacity-50"
             }`}
             variants={itemVariants}
           >
             <div
-              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
                 isDone
-                  ? "bg-emerald-50 text-emerald-600"
+                  ? `${done.soft} ${done.strong}`
                   : isActive
                     ? "bg-blush-50 text-blush-500"
                     : "bg-cream-100 text-ink-400"

@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { TONE } from "../config/tones";
 import { SSEProgress } from "../components/SSEProgress/SSEProgress";
 import { StreamingItinerary } from "../components/StreamingItinerary/StreamingItinerary";
 import { useTripStore } from "../stores/tripStore";
@@ -20,7 +21,7 @@ function TravelIllustration() {
   return (
     <div className="relative mx-auto h-36 w-36">
       <motion.div
-        className="absolute inset-0 rounded-full border border-blush-200 bg-surface shadow-soft"
+        className="absolute inset-0 rounded-full border border-cream-200 bg-surface shadow-soft"
         animate={{ scale: [1, 1.03, 1] }}
         transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -28,16 +29,16 @@ function TravelIllustration() {
         <HeartHandshake className="h-12 w-12" />
       </div>
 
-      <div className="absolute -left-4 top-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-surface text-sky-600 shadow-soft">
+      <div className="absolute -left-4 top-2 flex h-10 w-10 animate-float items-center justify-center rounded-xl bg-surface text-tone-sky-strong shadow-soft">
         <Plane className="h-5 w-5" />
       </div>
-      <div className="absolute -right-4 top-8 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-surface text-gold-500 shadow-soft">
+      <div className="absolute -right-4 top-8 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-xl bg-surface text-gold-500 shadow-soft">
         <MapPinned className="h-5 w-5" />
       </div>
-      <div className="absolute bottom-0 -left-2 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-lg bg-surface text-ink-400 shadow-soft">
+      <div className="absolute bottom-0 -left-2 flex h-10 w-10 animate-float-delayed items-center justify-center rounded-xl bg-surface text-ink-400 shadow-soft">
         <Compass className="h-5 w-5" />
       </div>
-      <div className="absolute -bottom-2 right-2 flex h-10 w-10 animate-float items-center justify-center rounded-lg bg-surface text-amber-500 shadow-soft">
+      <div className="absolute -bottom-2 right-2 flex h-10 w-10 animate-float items-center justify-center rounded-xl bg-surface text-tone-orange-strong shadow-soft">
         <CloudSun className="h-5 w-5" />
       </div>
     </div>
@@ -104,10 +105,11 @@ export function Loading() {
   }, [navigate, status]);
 
   if (status === "error") {
+    const tone = TONE.rose;
     return (
-      <div className="flex min-h-screen items-center justify-center bg-cream-50 px-4 py-10 text-ink-900">
+      <div className="flex min-h-dvh items-center justify-center bg-cream-50 px-4 py-10 text-ink-900">
         <div className="flex w-full max-w-sm flex-col items-center text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+          <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${tone.soft} ${tone.strong}`}>
             <AlertCircle className="h-7 w-7" />
           </div>
           <h1 className="mt-5 text-xl font-semibold">行程没有生成成功</h1>
@@ -116,7 +118,7 @@ export function Loading() {
           <div className="mt-6 grid w-full gap-2">
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-brand px-4 text-sm font-semibold text-white transition hover:bg-brand-dark"
+              className="ct-btn-primary h-11 px-4 text-sm"
               onClick={() => void beginPlanning()}
             >
               <RotateCcw className="h-4 w-4" />
@@ -124,14 +126,14 @@ export function Loading() {
             </button>
             <button
               type="button"
-              className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-cream-200 bg-surface px-4 text-sm font-medium text-ink-500 transition hover:text-ink-900"
+              className="ct-btn-outline h-11 px-4 text-sm"
               onClick={() => {
                 resetPlan();
                 navigate("/");
               }}
             >
               <ArrowLeft className="h-4 w-4" />
-              返回首页
+              返回对话
             </button>
           </div>
         </div>
@@ -140,7 +142,7 @@ export function Loading() {
   }
 
   return (
-    <div className="min-h-screen bg-cream-50 px-4 py-10 text-ink-900">
+    <div className="min-h-dvh bg-cream-50 px-4 py-10 text-ink-900">
       <div className="mx-auto flex w-full max-w-4xl flex-col items-center">
         <TravelIllustration />
 
@@ -154,6 +156,7 @@ export function Loading() {
         </motion.h1>
 
         <motion.p
+          role="status"
           className="mt-2 h-5 text-sm text-ink-500"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -197,6 +200,13 @@ function StreamingEventBadges({
     return null;
   }
 
+  const budgetTone =
+    budgetAlert?.warning_level === "over"
+      ? TONE.rose
+      : budgetAlert?.warning_level === "warning"
+        ? TONE.amber
+        : TONE.emerald;
+
   return (
     <motion.div
       className="flex flex-wrap items-center justify-center gap-2"
@@ -205,29 +215,21 @@ function StreamingEventBadges({
       transition={{ duration: 0.3 }}
     >
       {budgetAlert && (
-        <span
-          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
-            budgetAlert.warning_level === "over"
-              ? "bg-rose-50 text-rose-600"
-              : budgetAlert.warning_level === "warning"
-                ? "bg-amber-50 text-amber-600"
-                : "bg-emerald-50 text-emerald-600"
-          }`}
-        >
+        <span className={`ct-chip border font-medium ${budgetTone.chip}`}>
           <Wallet className="h-3.5 w-3.5" />
           ¥{budgetAlert.current.toLocaleString("zh-CN")} / ¥{budgetAlert.limit.toLocaleString("zh-CN")}
         </span>
       )}
 
       {weatherSwapCount > 0 && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-3 py-1.5 text-xs font-medium text-sky-600">
+        <span className={`ct-chip border font-medium ${TONE.sky.chip}`}>
           <CloudSun className="h-3.5 w-3.5" />
           天气调整 {weatherSwapCount} 项
         </span>
       )}
 
       {messageCount > 0 && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-blush-50 px-3 py-1.5 text-xs font-medium text-blush-600">
+        <span className="ct-chip border border-blush-200 bg-blush-50 font-medium text-blush-600">
           <HeartHandshake className="h-3.5 w-3.5" />
           已生成 {messageCount} 条寄语
         </span>

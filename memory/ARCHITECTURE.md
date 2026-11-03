@@ -457,3 +457,21 @@ meng-travel-agent/
 | 实心 CTA 用**固定 `brand` 色**，不随主题翻转 | `blush-500/600` 既作实心按钮填充（配白字）又作强调文字，翻转会破坏其一；把强调文字/描边留在翻转的 blush 色阶，实心填充分离到固定 brand，两主题下白字对比度都成立 |
 | POI 配图走"真实图 + 主题占位插画"兜底 | `Activity.image_url` 由高德 POI `photos[0]` 富化（`output_format` 按 name 回填）；离线/无图时前端 `ActivityImage` 按活动类型渲染渐变占位，不臆造失效外链（假设 C 降级路径） |
 | 静态地图（T3.3）暂不做 | 需高德 key + 联网瓦片，离线环境不可行；POI 配图已提供视觉主体，地图另立计划 |
+
+### 6.3 V6 设计系统的决策（本轮）
+
+| 决策 | 理由 |
+|------|------|
+| **零新依赖**，不引入 shadcn/ui / Radix / TanStack Query / Magic UI | 22 个组件已与业务深耦合（会话水合幂等、`pendingMessageId`、槽位 patch、SSE 三态），换组件库是重写而非复用；Radix 的价值在 Dialog/Popover/Select 原语，而本项目**只有"删除会话确认"一个真实需求**，原生 `<dialog>` 自带 top-layer/焦点陷阱/ESC，40 行即达标；Magic UI 类炫技组件与"避免过度装饰"冲突 |
+| 分类色改为 **`tone.*` 语义令牌**（7 色调 × soft/strong/line/fill），而非内联 `dark:` 变体 | 48 处调用点若各写一对 `x` + `dark:x`，改一半就会漂移；令牌不会漂移。**所有 class 必须是字面量** —— `"bg-" + hue` 运行时拼接 Tailwind 扫不到，样式静默失效 |
+| 颜色按**语义**而非装饰选取 | emerald=成功、amber=警告、rose=危险、sky=信息，其余是活动类型。这样"改语义"和"改外观"是两个独立动作 |
+| 主题 `preference` 三态（light/dark/system）+ **首帧前**内联脚本定主题 | 两态 toggle 会强制永久覆盖：点一次就再也回不到"跟随系统"。React 里设主题来不及 —— 首帧已按默认浅色画完，深色用户每次加载都白闪，故在 `<head>` 里同步读存储并写 `data-theme` |
+| `.theme-switching` 只在切换的 260ms 内启用颜色过渡 | 常驻 `* { transition }` 会拖慢每一次 hover；主题切换又确实需要过渡来避免硬切 |
+| `reducedMotion` 从 store 假开关改为 `<MotionConfig reducedMotion="user">` | 原来的 flag 有 setter 但**零消费者**；CSS 有 media query 兜底，但 framer-motion 的 stagger/float/layout 动画完全无视它 |
+| 会话行内操作**常驻布局**（`opacity-60`），而非 `opacity-0 group-hover` | 触屏没有 hover、键盘聚焦也不触发 hover，重命名/删除在移动端**根本不可达** |
+| 删除确认用原生 `<dialog>`，且 **Cancel 拿初始焦点** | `window.confirm` 无视主题且阻塞线程；而破坏性操作若让确认按钮自动聚焦，一个回车就会删掉会话 |
+| 自动滚动**锚定读者位置** + "回到最新" 药丸 | 无条件 `scrollIntoView` 会在用户向上翻历史时把人拽回底部，等于禁止回看 |
+| 时间轴每天改为**无卡片外壳的 section** | 每层都套 card，3 天行程读起来像 3 份独立报告，而不是一份文档的三节；深度只保留两级（`ct-card` / `ct-card-flat`） |
+| 活动卡片把"名称+花费"提到一行，类型/时间/地点降为 meta 行 | 读者真正比较的是"做什么、花多少"；原来 40px 类型色块与标题抢注意力，描述被挤窄 |
+| 配图与主题占位**统一 4:3 盒** | 原 `h-36` / `h-24` 不一致，图片加载失败会让卡片高度跳变 |
+| `--shadow` 也随主题翻转 | 暖近黑阴影在深底上直接消失，卡片失去层级；深色改纯黑且更重 |

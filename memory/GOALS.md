@@ -1,8 +1,47 @@
 ## Current Iteration Goals
 
-**Current Milestone**: V5 企业级健壮性审计与修复（Complete）
+**Current Milestone**: V6 设计系统与交互质量（Complete）
 
-**Objective**: 以企业级 Agent 视角审查全栈代码，按优先级修复 SSE 生命周期、跨租户隔离、熔断/幂等/连接池自愈等 bug 与逻辑问题。
+**Objective**: 按资深前端规范建立语义令牌层、真正修好深色模式、重做 Chat 消息流与时间轴视觉、补齐交互反馈与可访问性 —— 保持零新依赖。
+
+### V6 Completion Summary (2026-11-03)
+
+完整清单见 `UPGRADE_V6_DESIGN_SYSTEM.md`；关键取舍见 `ARCHITECTURE.md` §6.3。
+范围经用户确认：**零新依赖**、**深色跟随系统 + 记住选择**、**含较大视觉改版**。`package.json` 零变化。
+
+**P0 令牌层**
+- `tone.*` 语义色（7 色调 × soft/strong/line/fill，全部字面量展开以便 Tailwind 扫描）
+- `.ct-card`/`.ct-card-flat`/`.ct-input`/`.ct-btn-primary`/`.ct-btn-outline`/`.ct-btn-quiet`/`.ct-btn-icon`/`.ct-chip`/`.ct-well`/`.ct-scroll`
+- 全局 `:focus-visible` 环；`--shadow` 随主题翻转
+
+**P1 深色模式真收口**
+- 48 处原生调色板迁移到 tone 令牌、3 处硬编码 hex 变量化
+- `preference: light|dark|system` 持久化 + 实时跟随系统 + 首帧前内联脚本（消除白闪）+ 切换期过渡
+- `reducedMotion` 假开关改用 `<MotionConfig reducedMotion="user">`
+
+**P2 视觉改版**
+- Chat 消息流分组 / 日期分隔 / 气泡尾巴 / 滚动锚定 + "回到最新" / 打字点
+- Timeline 无壳 section + Day 徽章；TimelineCard 名称+花费同行 + meta chip + 配图统一 4:3
+- ChatPlanCard hero 发丝进度条；空状态三条建议各带图标副标题
+
+**P3 交互与 a11y**
+- 输入框自动增高、会话操作触屏可达、`h-dvh`、原生 `<dialog>`（Cancel 初始焦点）、骨架屏、`aria-*` 补齐
+
+### V6 Verification
+
+- `npx tsc -b` 通过；`npm run build` 通过（CSS gzip 8.05 kB / JS gzip 138.52 kB）
+- `check:chat` **49/49** + `check:store` **28/28**
+- 构建产物实测：21 个 tone 类全部生成；每个 tone 变量 light/dark 各定义一次；
+  `data-theme=dark` 的 surface/ink/shadow/tone 均确认翻转
+- 残留原生调色板 0、`*.tsx` 硬编码 hex 0、`window.confirm`/`h-screen` 0
+
+### V6 Known Gaps
+
+1. **浏览器人工确认仍需执行**：深色模式逐页过（Chat / 空状态 / 展开行程 / PlanResult / Loading / `/form`）
+2. **E2E 本机不可运行**：Playwright 浏览器未安装
+3. **静态地图 / OTel tracing**：历史遗留
+
+### V5 Completion Summary (2026-11-02)
 
 ### V5 Completion Summary (2026-11-02)
 

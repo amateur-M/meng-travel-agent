@@ -23,11 +23,10 @@ interface ChatComposerProps {
 /**
  * The composer: everything below the message flow in one action area (V4/T2.2).
  *
- * The status bar, the collected-slot chips, the primary "开始规划行程" button and
- * the text input used to be four separate floating blocks stacked down the page.
- * Grouping them into a single bordered region makes the "talk → see what we
- * understood → act → keep talking" loop read as one surface instead of a pile of
- * banners.
+ * V6/T2.6 removed the last of the "pile of boxes" feel: the slot chips no longer
+ * sit in their own card, and the primary action only exists when it is actually
+ * actionable (no permanent disabled button). What remains is one bordered
+ * region: [status] → [slots] → [start plan] → [input].
  */
 export function ChatComposer({
   statusRegion,
@@ -40,35 +39,29 @@ export function ChatComposer({
   onSend,
   inputDisabled,
 }: ChatComposerProps) {
-  const showSlots = Object.values(slots).some((value) => value) || ready;
-
   return (
-    <div className="shrink-0 border-t border-cream-200 bg-surface px-4 py-3 sm:px-6">
+    <div className="shrink-0 border-t border-cream-200 bg-surface/95 px-3 py-2.5 backdrop-blur sm:px-6">
       <div className={`mx-auto ${CONTENT_WIDTH.chat} space-y-2`}>
         {statusRegion}
+        <SlotPanel slots={slots} />
 
-        {showSlots && (
-          <div className="space-y-2">
-            <SlotPanel slots={slots} />
-            {ready && (
-              <button
-                type="button"
-                onClick={onStartPlan}
-                disabled={launching || planning}
-                className="ct-btn-primary w-full px-4 py-3 text-sm"
-              >
-                {planning
-                  ? "正在规划行程..."
-                  : hasPlan
-                    ? "按新的要求重新规划"
-                    : "开始规划行程"}
-                <ArrowRight className="h-4 w-4" />
-              </button>
-            )}
-          </div>
+        {ready && (
+          <button
+            type="button"
+            onClick={onStartPlan}
+            disabled={launching || planning}
+            className="ct-btn-primary w-full px-4 py-2.5 text-sm"
+          >
+            {planning ? "正在规划行程..." : hasPlan ? "按新的要求重新规划" : "开始规划行程"}
+            <ArrowRight className="h-4 w-4" />
+          </button>
         )}
 
         <ChatInput onSend={onSend} disabled={inputDisabled} />
+
+        <p className="text-center text-[11px] text-ink-300">
+          行程由 AI 生成，出发前请再核对营业时间与价格
+        </p>
       </div>
     </div>
   );

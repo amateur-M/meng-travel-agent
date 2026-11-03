@@ -4,7 +4,7 @@
 
 **技术栈**：React 18 + TypeScript + Tailwind CSS + Framer Motion | Python 3.13 + FastAPI + LangChain + LangGraph | OpenAI GPT-4o / DeepSeek / Qwen / Kimi
 
-**当前阶段**：M0–M7 全部交付，**V2（P0–P3）、V3（对话记忆与持久化）、V4（系统成熟度）与 V5（企业级健壮性审计修复）均已完成**。后端测试 **465 passed + 3 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49 + 28/28。
+**当前阶段**：M0–M7 全部交付，**V2（P0–P3）、V3（对话记忆与持久化）、V4（系统成熟度）、V5（企业级健壮性审计修复）与 V6（设计系统与交互质量）均已完成**。后端测试 **465 passed + 3 skipped**，前端 `tsc -b` + `vite build` 通过、`npm run check:store` 49/49 + 28/28。
 
 **V3 升级摘要**（详见 [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md)）：
 起因是"对话记忆没有做"：`get_history()` 零调用点（历史写了从不读）、`question` 意图回固定话术、前端只存 `session_id`。进一步发现 **PostgreSQL 认证失败 + Redis 不支持 RESP3 `HELLO`，两个持久化后端全程静默降级** —— 连已有的槽位记忆与行程持久化都从未真正生效。已完成：
@@ -29,6 +29,14 @@
 - **P2/P3**：删死代码 `createPlan`；`health.py` 新增 `/ready` 就绪探针（降级 503，`/health` 保持 200 liveness）；amap 业务错误入熔断；`chatStore.send` 并发防护 + assistant 补 messageId
 - **未改（需决策）**：#11 鉴权/IDOR 属部署配置（生产开 `auth_enabled`）；#21 多 worker SSE 属架构演进（需 Redis broker）
 - **验证**：后端 465 passed + 3 skipped、前端 `tsc --noEmit` 无错 + `check:store` 28/28；DB 变更全部幂等（`ADD COLUMN IF NOT EXISTS`），无需手工迁移
+
+**V6 升级摘要**（详见 [UPGRADE_V6_DESIGN_SYSTEM.md](UPGRADE_V6_DESIGN_SYSTEM.md)）：
+起因是用户给出资深前端工程师规范（统一设计语言、简洁现代、控制依赖、完整交互反馈），并确认三项范围：**零新依赖**、**深色跟随系统+记住选择**、**含较大视觉改版**。`package.json` 依赖零变化：
+- **P0 令牌层**：新增 `tone.*` 语义色（7 色调 × 4 角色 soft/strong/line/fill，全部字面量以便 Tailwind 扫描）+ `.ct-card`/`.ct-input`/`.ct-btn-*`/`.ct-chip`/`.ct-scroll` 语义类 + 全局 `:focus-visible` 环 + 主题化 `--shadow`
+- **P1 深色模式真收口**：**48 处**原生调色板（`bg-sky-50`/`text-amber-800`/`bg-rose-50`…）迁移到 tone 令牌、3 处硬编码 hex 变量化；主题 `preference: light|dark|system` 持久化 + `watchSystemTheme()` 实时跟随 + `index.html` 内联脚本**首帧前**定主题（消除白闪）+ `.theme-switching` 仅切换期过渡；`reducedMotion` 死代码改用 `<MotionConfig reducedMotion="user">`
+- **P2 视觉改版**：Chat 消息流（连续回复共享头像、日期分隔、气泡方向尾巴、**滚动锚定**+"回到最新"、打字点）；Timeline 每天改无壳 section + Day 徽章；TimelineCard 名称/花费同行 + meta 行 chip + 配图统一 4:3 盒（消除高度跳变）；ChatPlanCard hero 内发丝进度条；空状态三建议各带图标副标题
+- **P3 交互/a11y**：输入框自动增高、会话行内操作触屏可达、`h-screen`→`h-dvh`、原生 `<dialog>` 替换 `window.confirm`、会话骨架屏、状态条 `role=alert/status`、多处 `aria-*`、`PlanResult` 文案"重新规划"→"返回对话"
+- **验证**：`tsc -b` 通过、`npm run build` 通过（CSS gzip 8.05 kB / JS gzip 138.52 kB）、`check:store` 49/49 + 28/28；构建产物实测 **21 个 tone 类全部生成**、每个 tone 变量在 light/dark **各定义一次**、暗色取值确认翻转；残留原生调色板与硬编码 hex 均为 **0**
 
 **下一步行动**：
 1. 只剩**浏览器专属**的手工确认（服务端行为已全部自动化）：真实标签页刷新后的水合、
@@ -67,6 +75,7 @@
 | [UPGRADE_V3_CONVERSATION_MEMORY.md](UPGRADE_V3_CONVERSATION_MEMORY.md) | V3 对话记忆设计 + P0–P4 任务表 + §11 设计修正与未闭环项 |
 | [UPGRADE_V4_SYSTEM_MATURITY.md](UPGRADE_V4_SYSTEM_MATURITY.md) | V4 系统成熟度：后端分层 + Chat 唯一主入口 + 深色模式修复 + POI 配图 + 文档同步（执行结果） |
 | [UPGRADE_V5_ROBUSTNESS_FIXES.md](UPGRADE_V5_ROBUSTNESS_FIXES.md) | V5 企业级健壮性审计与修复清单（P0–P3 逐项现象/修复/文件 + 验证记录 + DB 迁移提示） |
+| [UPGRADE_V6_DESIGN_SYSTEM.md](UPGRADE_V6_DESIGN_SYSTEM.md) | V6 设计系统与交互质量：tone 令牌 + 深色模式真收口 + 消息流/时间轴视觉改版 + a11y（零新依赖的理由） |
 | [DEPLOY.md](DEPLOY.md) | 部署文档（本地 / Docker / E2E / CI / 手工冒烟清单） |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 实际目录结构 + 新增文件清单 |
 
@@ -83,11 +92,12 @@
 5. 再读 memory/UPGRADE_V3_CONVERSATION_MEMORY.md —— 了解对话记忆分层（L0–L3）、12 场景恢复矩阵、**§11 设计修正与未闭环项**
 6. 再读 memory/UPGRADE_V4_SYSTEM_MATURITY.md —— 了解后端分层（api/+services/）、Chat 唯一主入口、深色模式修复、POI 配图
 7. 再读 memory/UPGRADE_V5_ROBUSTNESS_FIXES.md —— 了解企业级健壮性审计与 P0–P3 修复（SSE 重连/泄漏、跨租户隔离、熔断/幂等/连接池自愈）
-8. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2 已对齐真实结构）
+8. 再读 memory/UPGRADE_V6_DESIGN_SYSTEM.md —— 了解设计令牌层（tone/ct-*）、深色模式真收口、视觉改版与 a11y
+9. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2/§6.3 已对齐真实结构）
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 
-当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成，V4 系统成熟度（后端分层 + Chat 唯一主入口 + 深色模式 + 视觉升级）已完成，V5 企业级健壮性审计与修复（SSE 生命周期 + 跨租户隔离 + 熔断/幂等/连接池自愈）已完成。
+当前项目状态：M0-M7 已交付，V2 P0–P3 已完成，V3 对话记忆与持久化已完成，V4 系统成熟度（后端分层 + Chat 唯一主入口 + 深色模式 + 视觉升级）已完成，V5 企业级健壮性审计与修复（SSE 生命周期 + 跨租户隔离 + 熔断/幂等/连接池自愈）已完成，V6 设计系统与交互质量（tone 令牌 + 深色模式收口 + 消息流/时间轴改版，零新依赖）已完成。
 
 ---
 

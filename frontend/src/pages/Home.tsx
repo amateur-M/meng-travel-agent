@@ -1,15 +1,11 @@
 import { motion } from "framer-motion";
-import {
-  ArrowRight,
-  CalendarDays,
-  MapPin,
-  WalletCards,
-} from "lucide-react";
+import { ArrowRight, CalendarDays, MapPin, WalletCards } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AppHeader } from "../components/AppHeader";
 import { CoupleQuote } from "../components/CoupleQuote/CoupleQuote";
 import { TripForm } from "../components/TripForm/TripForm";
 import { useTripStore } from "../stores/tripStore";
+import { CONTENT_WIDTH } from "../config/layout";
 
 /**
  * 首页，承载情侣行程输入表单，并在桌面端展示当前选择摘要。
@@ -19,7 +15,7 @@ export function Home() {
   const form = useTripStore((state) => state.form);
 
   return (
-    <div className="min-h-screen bg-cream-50 text-ink-900">
+    <div className="min-h-dvh bg-cream-50 text-ink-900">
       <AppHeader
         trailing={
           <div className="hidden items-center gap-2 text-sm text-ink-400 sm:flex">
@@ -29,7 +25,7 @@ export function Home() {
         }
       />
 
-      <main className="mx-auto max-w-6xl px-4 py-5 sm:px-6 sm:py-8">
+      <main className={`mx-auto ${CONTENT_WIDTH.page} px-4 py-5 sm:px-6 sm:py-8`}>
         <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
           <TripForm onSubmit={() => navigate("/loading")} />
 
@@ -42,7 +38,7 @@ export function Home() {
             <div className="sticky top-6 space-y-5">
               <section className="ct-card p-6">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-blush-50 text-blush-500">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blush-50 text-blush-500">
                     <MapPin className="h-5 w-5" />
                   </div>
                   <div>
@@ -74,7 +70,7 @@ export function Home() {
                   {form.preferences.map((preference) => (
                     <span
                       key={preference}
-                      className="rounded-full bg-blush-50 px-3 py-1 text-xs text-blush-600"
+                      className="ct-chip border border-blush-200 bg-blush-50 text-blush-600"
                     >
                       {preference}
                     </span>

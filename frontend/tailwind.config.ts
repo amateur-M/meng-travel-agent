@@ -53,6 +53,54 @@ const config: Config = {
           DEFAULT: "#cc456d",
           dark: "#a93255",
         },
+        // V6/T0.1: the categorical palette. Activity types, weather kinds and
+        // status messages each used to reach for a raw Tailwind hue (bg-sky-50,
+        // text-amber-800, bg-rose-50...). Those bypass the theme entirely, so in
+        // dark mode they painted pale pastel blocks on a dark page. Each hue now
+        // exposes exactly three roles, and each role is a CSS variable that
+        // index.css re-assigns for dark:
+        //   soft   — tinted panel/surface behind content
+        //   strong — text and icons on that panel
+        //   line   — border/divider matching the panel
+        // Hues are chosen by *meaning*, not decoration: emerald=success,
+        // amber=warning, rose=danger, sky=info, the rest are activity kinds.
+        tone: {
+          sky: {
+            soft: "rgb(var(--tone-sky-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-sky-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-sky-line) / <alpha-value>)",
+          },
+          violet: {
+            soft: "rgb(var(--tone-violet-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-violet-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-violet-line) / <alpha-value>)",
+          },
+          indigo: {
+            soft: "rgb(var(--tone-indigo-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-indigo-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-indigo-line) / <alpha-value>)",
+          },
+          emerald: {
+            soft: "rgb(var(--tone-emerald-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-emerald-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-emerald-line) / <alpha-value>)",
+          },
+          amber: {
+            soft: "rgb(var(--tone-amber-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-amber-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-amber-line) / <alpha-value>)",
+          },
+          orange: {
+            soft: "rgb(var(--tone-orange-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-orange-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-orange-line) / <alpha-value>)",
+          },
+          rose: {
+            soft: "rgb(var(--tone-rose-soft) / <alpha-value>)",
+            strong: "rgb(var(--tone-rose-strong) / <alpha-value>)",
+            line: "rgb(var(--tone-rose-line) / <alpha-value>)",
+          },
+        },
       },
       fontFamily: {
         sans: [
@@ -70,9 +118,13 @@ const config: Config = {
           "cursive",
         ],
       },
+      // V6/T0.2: shadows are theme-aware. A warm near-black shadow is right on
+      // cream, but on a dark surface it just disappears — dark mode swaps in a
+      // deeper, more opaque one so cards still lift off the page.
       boxShadow: {
-        soft: "0 16px 40px rgba(78, 47, 55, 0.08)",
-        lift: "0 20px 50px rgba(78, 47, 55, 0.12)",
+        soft: "0 1px 2px rgb(var(--shadow) / 0.04), 0 12px 32px rgb(var(--shadow) / 0.07)",
+        lift: "0 2px 6px rgb(var(--shadow) / 0.06), 0 22px 54px rgb(var(--shadow) / 0.12)",
+        ring: "0 0 0 1px rgb(var(--cream-200))",
       },
       keyframes: {
         float: {
@@ -83,11 +135,20 @@ const config: Config = {
           "0%, 100%": { opacity: "0.55" },
           "50%": { opacity: "1" },
         },
+        shimmer: {
+          "100%": { transform: "translateX(100%)" },
+        },
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(6px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
       },
       animation: {
         float: "float 5s ease-in-out infinite",
         "float-delayed": "float 5s ease-in-out 1.2s infinite",
         "pulse-soft": "pulse-soft 2.4s ease-in-out infinite",
+        shimmer: "shimmer 1.6s ease-in-out infinite",
+        "fade-up": "fade-up 0.3s ease-out both",
       },
     },
   },

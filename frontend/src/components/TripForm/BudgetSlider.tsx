@@ -10,6 +10,10 @@ interface BudgetSliderProps {
 
 /**
  * 总预算滑块，用暖粉进度展示预算档位，并同步显示数值。
+ *
+ * V6/T1.4: the filled track was drawn with two hardcoded hexes via an inline
+ * gradient, so in dark mode it stayed a bright pink-to-cream bar on a dark page.
+ * It now uses the theme's own variables, which flip with the theme.
  */
 export function BudgetSlider({
   value,
@@ -40,13 +44,15 @@ export function BudgetSlider({
         max={max}
         step={step}
         value={value}
+        aria-label="总预算"
+        aria-valuetext={`¥${value.toLocaleString("zh-CN")}`}
         onChange={(event) => onChange(Number(event.target.value))}
         style={{
-          background: `linear-gradient(to right, #e76c8d ${percentage}%, #f9e8d5 ${percentage}%)`,
+          background: `linear-gradient(to right, rgb(var(--blush-400)) ${percentage}%, rgb(var(--cream-200)) ${percentage}%)`,
         }}
       />
 
-      <div className="flex justify-between text-xs text-ink-400">
+      <div className="flex justify-between text-xs tabular-nums text-ink-400">
         <span>¥{min.toLocaleString("zh-CN")}</span>
         <span>¥{max.toLocaleString("zh-CN")}</span>
       </div>

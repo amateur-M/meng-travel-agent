@@ -4,7 +4,34 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>CoupleTrip — 情侣旅游规划</title>
+    <!--
+      V6/T1.3: resolve the theme before the first paint.
+
+      React cannot do this in time — by the time the store mounts, the browser has
+      already painted a frame in the default (light) palette, so a dark-mode user
+      saw a white flash on every load. This inline script runs synchronously in
+      <head>, reads the same key the store reads, and sets data-theme so index.css
+      has the right variables from frame one. It is intentionally tiny and
+      dependency-free; the store later adopts whatever it decided.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("coupletrip.theme");
+          var theme =
+            stored === "light" || stored === "dark"
+              ? stored
+              : window.matchMedia("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+          document.documentElement.dataset.theme = theme;
+        } catch (e) {
+          document.documentElement.dataset.theme = "light";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
