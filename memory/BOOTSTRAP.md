@@ -93,7 +93,7 @@
 6. 再读 memory/UPGRADE_V4_SYSTEM_MATURITY.md —— 了解后端分层（api/+services/）、Chat 唯一主入口、深色模式修复、POI 配图
 7. 再读 memory/UPGRADE_V5_ROBUSTNESS_FIXES.md —— 了解企业级健壮性审计与 P0–P3 修复（SSE 重连/泄漏、跨租户隔离、熔断/幂等/连接池自愈）
 8. 再读 memory/UPGRADE_V6_DESIGN_SYSTEM.md —— 了解设计令牌层（tone/ct-*）、深色模式真收口、视觉改版与 a11y
-9. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§4/§5/§6.2/§6.3 已对齐真实结构）
+9. 最后读 memory/ARCHITECTURE.md —— 了解技术决策、Agent 设计、记忆分层、API 协议（§3.1/§3.2/§4/§5/§6 系列均已对齐真实结构）
 
 如有需要，检查 frontend/ 和 backend/ 的实际代码确认当前进度
 

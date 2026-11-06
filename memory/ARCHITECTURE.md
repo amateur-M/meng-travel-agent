@@ -202,7 +202,9 @@ P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台�
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/health` | 健康检查 + **存储状态**（`storage.postgres` / `storage.chat`，含失败原因） |
+| `GET` | `/health` | liveness，**恒 200**；含存储状态（`storage.postgres` / `storage.chat`，带失败原因），降级时 `status=degraded` |
+| `GET` | `/ready` | readiness（V5/P2-12）：任一存储不可达返回 **503**，供编排器摘流。`/health` 需兼容既有 healthcheck，无法表达这个信号 |
+| `GET` | `/metrics` | Prometheus 指标（V2/P3.2，`Instrumentator` 暴露，`include_in_schema=False`） |
 | `POST` | `/api/plan` | 提交行程规划请求，返回 `plan_id`（可带 `session_id` 关联对话） |
 | `GET` | `/api/plan/{plan_id}` | 查询已完成的行程详情 |
 | `GET` | `/api/plan/{plan_id}/stream` | SSE 端点，流式推送规划进度 |
@@ -256,46 +258,57 @@ P0.2 的要求是"不阻塞事件循环"，线程卸载同样满足且跨平台�
 }
 ```
 
-### 3.2 SSE 协议
+### 3.2 SSE 协议（V2/P0.3 两段式）
 
-端点：`POST /api/plan`（M6 实际实现：POST 流式返回，非 GET 轮询）
+> 历史注记：本节原写「端点 `POST /api/plan`，POST 流式返回，非 GET 轮询」，是 M6 时代的
+> 实现。V4 文档同步只对齐了 §2.1 / §4 / §5 / §6.2，此处遗漏；现按真实代码重写。
+> **`POST` 不返回事件流**，只返回 `plan_id`，事件流在独立的 `GET` 端点。
 
-事件类型（M6 实际实现，`stream_mode="updates"` 逐节点发射）：
+| 步骤 | 请求 | 作用 |
+|------|------|------|
+| 1 | `POST /api/plan` | 立即返回 `{plan_id, stream_url, status:"processing"}`，同时以 `asyncio.create_task` 投递后台任务跑**一次** LangGraph |
+| 2 | `GET /api/plan/{plan_id}/stream` | SSE 流：进行中从 `plan_streams` 内存队列消费；已完成则按 `plan_id` 从 PostgreSQL 重放单条 `complete` |
+
+**重连不重跑**：前端 `getEventStream()` 用 `fetch` + `ReadableStream` 手动解析事件帧
+（**不是 `EventSource`** —— GET 请求需携带 `X-API-Key` 头，而 `EventSource` 无法设置自定义请求头）。
+中断后重连**同一个 GET URL**，最多 2 次、退避 `800ms × attempt`。清理权唯一归属后台任务
+（`plan_streams.pop` 只在 `_run_graph_to_queue` 的 `finally` 中执行），所以进行中的重连仍能
+挂回同一队列，不会 404、更不会重跑管线；规划结束后的重连走 DB 重放。
+`services/sse.ts` 中的 `connectSSE`（EventSource）与 `postEventStream`（POST 流式）是旧路径
+兼容代码，当前主链路不引用（走 `startPlan` + `resumeStream`）。
+
+事件类型（`stream_mode="updates"` 逐节点发射，帧格式由 `services/sse.py::_sse` 生成）：
 
 | event | data | 说明 |
 |-------|------|------|
-| `step` | `{ "phase": "fetch_weather", "message": "正在查询大理天气..." }` | 当前阶段（每个节点完成时发射） |
-| `partial` | `{ "day_index": 0, "period": "all", "activities": [...], "weather": "晴" }` | 逐日行程数据（plan_itinerary/rhythm_control 后发射） |
+| `step` | `{ "phase": "fetch_weather", "message": "正在查询目的地天气..." }` | 当前阶段（每个节点完成时发射）；字段名是 **`phase`** |
+| `partial` | `{ "day_index": 0, "period": "all", "activities": [...], "weather": "晴" }` | 逐日行程数据（plan_itinerary / rhythm_control 后发射） |
 | `budget_alert` | `{ "current": 5200, "limit": 5000, "warning_level": "over", "spending_ratio": 1.04, "downgrade_applied": true, "suggestions": [...], "downgrade_notes": [...] }` | 预算预警（budget_check 后） |
 | `weather_swap` | `{ "day_index": 0, "original": "洱海骑行", "replacement": "室内咖啡馆", "reason": "雨天切换", "adjustment_type": "swap" }` | 天气方案切换（adapt_weather 后，逐项发射） |
 | `message` | `{ "day": 1, "activity": "洱海骑行", "text": "和你一起..." }` | 情侣寄语生成（add_couple_touch 后，逐活动发射） |
-| `complete` | 完整 `TripPlanResponse` JSON（含 `warnings` 字段） | 生成完成 |
-| `error` | `{ "phase": "...", "message": "..." }` | 异常 |
+| `complete` | `TripPlanResponse` JSON + `plan_id` + `degraded`；有降级时另带 `warnings` | 生成完成，同时落库 `status=completed` |
+| `error` | `{ "phase": "...", "message": "..." }` | 异常（管线置 `status=error` 后，重连也会重放该事件） |
 
-**客户端消费伪代码**：
+**客户端消费伪代码**（对应 `frontend/src/services/plan.ts`）：
 
 ```typescript
-const eventSource = new EventSource(`/api/plan/${planId}/stream`);
+// 1) POST 只创建规划，不返回流
+const { plan_id } = await startPlan(request, sessionId);
 
-eventSource.addEventListener('step', (e) => {
-  const { step, message } = JSON.parse(e.data);
-  updateProgress(step, message);
-});
-
-eventSource.addEventListener('partial', (e) => {
-  const partial = JSON.parse(e.data);
-  appendItinerary(partial);
-});
-
-eventSource.addEventListener('complete', () => {
-  eventSource.close();
-  markPlanReady();
+// 2) resumeStream 内部调用 getEventStream(`/api/plan/${plan_id}/stream`, handlers)
+//    complete → normalizePlan(payload) 并返回；error → 抛错；断线 → 重连同一 URL
+await resumeStream(plan_id, request, {
+  onStep: ({ phase, message }) => updateProgress(phase, message),
+  onPartial: (partial) => appendItinerary(partial),
+  onBudgetAlert: showBudgetAlert,
+  onWeatherSwap: markWeatherSwap,
+  onMessage: renderCoupleNote,
 });
 ```
 
 ### 3.3 是否引入 WebSocket
 
-**结论：暂不引入。** SSE 的单向推送（server → client）已完全覆盖行程生成的进度通知需求。前端只需消费事件流，无需向服务端持续推送，SSE 更轻量、浏览器原生支持、自动重连。
+**结论：暂不引入。** SSE 的单向推送（server → client）已完全覆盖行程生成的进度通知需求：前端只消费事件流，无需向服务端持续推送；断线重连由 `getEventStream()` 重连同一 GET URL 实现（见 §3.2，非 `EventSource` 的浏览器自动重连），比维护 WebSocket 连接更轻。
 
 若未来扩展多用户协作编辑行程（实时同步），再引入 WebSocket。
 
@@ -429,10 +442,14 @@ meng-travel-agent/
 | 决策 | 理由 |
 |------|------|
 | State 用 TypedDict 而非 Pydantic | LangGraph 原生推荐 TypedDict + Annotated，与 add_messages reducer 兼容 |
-| 天气 + POI 并行查询 | fetch_weather 和 search_pois 无依赖，并行可减少 40% 等待时间 |
-| 预算降级在 apply_budget 内部实现为子循环 | 预算可能多次超标（替换后仍超标），内部循环比条件边更简洁 |
+| `fetch_weather` / `search_poi` / `search_food` 三路并行 | 三者互不依赖，fan-out 可减少等待；`current_phase` 用 `_latest_str`、`warnings` 用 `operator.add` reducer，避免并行写入冲突 |
+| 预算降级在 `budget_check` 节点内**原地确定性执行** | M4 起超预算时一次性替换高价 POI / 餐厅，然后直接进入 `adapt_weather`，不重跑 LLM；早期 `budget_check → plan_itinerary` 条件重试回路是不可达死代码，P6 已删除（见 §2.3） |
 | SSE 而非 WebSocket | 单向推送足够，SSE 浏览器原生支持，无需额外库 |
 | 前端 Vite 代理后端 | 开发环境免 CORS 配置，生产环境由 Nginx 反向代理 |
+
+> 本表沿用早期规划稿的决策条目，节点名已按 §2.2 的真实实现对齐：
+> 历史里的 `apply_budget` / `search_pois` = 现在的 `budget_check` / `search_poi`。
+> 后续 §6.1–§6.3 按版本记录当时的决策，措辞同样以各节标注的版本为准。
 
 ### 6.1 V3 对话记忆的决策（2026-10-16）
 
